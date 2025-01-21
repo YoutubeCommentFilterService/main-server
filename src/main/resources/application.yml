@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: youtube-comments
+
+  config:
+    import:
+#      - "classpath:/config/h2-db.yml"
+      - "classpath:/config/mariadb.yml"
+      - "classpath:/config/rabbitmq.yml"
+      - "classpath:/config/redis.yml"
+      - "classpath:/config/security.yml"
+      - "classpath:/config/youtube-data.yml"
