@@ -64,12 +64,17 @@ public class MemberService {
             String uuid = claims.getSubject();
             Member member = memberRepository.findById(UUID.fromString(uuid)).orElse(null);
             return tokenProvider.createAccessToken(member.getId(), member.getEmail());
-            // 일단 회원가입 한 멤버에 대해서만 발급으로 가정
-//            if (member != null) {
-//
-//            }
         } catch (Exception e) {
             throw new BadRequestException("유효하지 않은 refreshToken입니다.");
         }
+    }
+
+    public void logout(UUID uuid) {
+        redisService.searchNRemove(uuid.toString(), false);
+    }
+
+    public void withdraw(UUID uuid) {
+        memberRepository.deleteById(uuid);
+        redisService.searchNRemove(uuid.toString(), false);
     }
 }
