@@ -5,6 +5,7 @@ import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.service.MemberService;
 import com.hanhome.youtube_comments.oauth.dto.CustomTokenRecord;
 import com.hanhome.youtube_comments.oauth.provider.JwtTokenProvider;
+import com.hanhome.youtube_comments.oauth.service.CookieService;
 import com.hanhome.youtube_comments.redis.service.RedisService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -34,6 +35,7 @@ public class CustomOauth2SuccessHandler implements AuthenticationSuccessHandler 
     private final RedisService redisService;
     private final MemberService memberService;
     private final JwtTokenProvider tokenProvider;
+    private final CookieService cookieService;
 
     @Value("${data.youtube.access-token}")
     private String redisGoogleAtKey;
@@ -68,13 +70,7 @@ public class CustomOauth2SuccessHandler implements AuthenticationSuccessHandler 
         long ttl = customAccessToken.ttl();
         TimeUnit timeUnit = customAccessToken.timeUnit();
 
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-
-        Cookie accessTokenCookie = new Cookie("access_token", customAccessToken.token());
-        accessTokenCookie.setHttpOnly(true);
-        accessTokenCookie.setPath("/");
-        accessTokenCookie.setMaxAge((int) timeUnit.toSeconds(ttl));
+        Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
         response.addCookie(accessTokenCookie);
 
         response.sendRedirect("http://localhost:5173/after-login");
