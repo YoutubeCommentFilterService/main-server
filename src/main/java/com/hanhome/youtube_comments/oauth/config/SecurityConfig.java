@@ -73,7 +73,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOriginPatterns(List.of("http://localhost:5173", "https://accounts.google.com"));
+        configuration.setAllowedOriginPatterns(List.of("http://localhost:5173", "https://accounts.google.com", "http://127.0.0.1:5173"));
         configuration.setAllowedMethods(List.of("GET","POST","PUT","DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
