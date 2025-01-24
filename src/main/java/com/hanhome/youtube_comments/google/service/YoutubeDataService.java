@@ -2,12 +2,15 @@ package com.hanhome.youtube_comments.google.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.hanhome.youtube_comments.google.dto.DeleteCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetVideosDto;
 import com.hanhome.youtube_comments.redis.service.RedisService;
 import lombok.RequiredArgsConstructor;
+import org.apache.coyote.BadRequestException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriBuilder;
@@ -45,9 +48,7 @@ public class YoutubeDataService {
     public GetVideosDto.FromGoogle getVideos(GetVideosDto.Request request, UUID uuid) {
         String googleAccessToken = getGoogleAccessToken(uuid);
 
-        Map<String, Object> queries = new HashMap<>();
-
-        queries.put("key", apiKey);
+        Map<String, Object> queries = generateDefaultQueries();
         queries.put("part", "snippet");
         queries.put("order", "date");
         queries.put("forMine", true);
@@ -65,6 +66,10 @@ public class YoutubeDataService {
                 .uri(uriBuilder -> generateUri(uriBuilder, queries, "search"))
                 .headers(headers -> setCommonHeader(headers, googleAccessToken))
                 .retrieve()
+                .onStatus( // 401 - 잘못된 토큰, 403 - unauthorized
+                        HttpStatusCode::is4xxClientError,
+                        response -> Mono.error(new BadRequestException("Re-login google"))
+                )
                 .bodyToMono(JsonNode.class)
                 .flatMap(this::generateVideosResponse)
                 .block();
@@ -85,9 +90,7 @@ public class YoutubeDataService {
         boolean isLast = false;
         String googleAccessToken = getGoogleAccessToken(uuid);
 
-        Map<String, Object> queries = new HashMap<>();
-
-        queries.put("key", apiKey);
+        Map<String, Object> queries = generateDefaultQueries();
         queries.put("part", "snippet");
         queries.put("videoId", videoId);
 
@@ -130,6 +133,46 @@ public class YoutubeDataService {
                 .items(resources)
                 .isLast(isLast)
                 .build();
+    }
+
+    public void updateModerationAndAuthorBan(DeleteCommentsDto.Request request, UUID uuid) {
+        String googleAccessToken = getGoogleAccessToken(uuid);
+
+        // Remove Comment + Author Ban
+        if (request.getAuthorBanComments() != null && !request.getAuthorBanComments().isEmpty()) {
+            Map<String, Object> authorBanQueries = generateDefaultQueries();
+            authorBanQueries.put("id", request.getAuthorBanComments());
+            authorBanQueries.put("moderationStatus", "rejected");
+            authorBanQueries.put("banAuthor", true);
+
+            webClient.post()
+                    .uri(uriBuilder -> generateUri(uriBuilder, authorBanQueries, "setModerationStatus"))
+                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                    .retrieve()
+                    .bodyToMono(Void.class)
+                    .block();
+        }
+
+        // Just Remove Comment
+        if (request.getJustDeleteComments() != null && !request.getJustDeleteComments().isEmpty()) {
+            Map<String, Object> justRemoveQueries = generateDefaultQueries();
+            justRemoveQueries.put("id", request.getJustDeleteComments());
+            justRemoveQueries.put("moderationStatus", "rejected");
+
+            webClient.post()
+                    .uri(uriBuilder -> generateUri(uriBuilder, justRemoveQueries, "setModerationStatus"))
+                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                    .retrieve()
+                    .bodyToMono(Void.class)
+                    .block();
+        }
+    }
+
+    private Map<String, Object> generateDefaultQueries() {
+        Map<String, Object> queries = new HashMap<>();
+
+        queries.put("key", apiKey);
+        return queries;
     }
 
     private Mono<GetVideosDto.FromGoogle> generateVideosResponse(JsonNode rootNode) {
