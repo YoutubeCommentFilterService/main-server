@@ -24,6 +24,6 @@ public class CustomUserDetailsService implements UserDetailsService {
         if (member == null) {
             throw new UsernameNotFoundException("User not found with uuid: " + uuid);
         }
-        return new CustomUserDetails(member.getId(), member.getEmail());
+        return new CustomUserDetails(member);
     }
 }

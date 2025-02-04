@@ -22,6 +22,7 @@ public class Member {
 
     private String googleRefreshToken;
     private String refreshToken;
+    private String channelId;
 
     public void setRefreshToken(String refreshToken) {
         this.refreshToken = refreshToken;

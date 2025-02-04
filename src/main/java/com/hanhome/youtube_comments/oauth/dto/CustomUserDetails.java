@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.oauth.dto;
 
+import com.hanhome.youtube_comments.member.entity.Member;
 import lombok.Getter;
 import lombok.ToString;
 import org.springframework.security.core.GrantedAuthority;
@@ -12,12 +13,10 @@ import java.util.UUID;
 @ToString
 @Getter
 public class CustomUserDetails implements UserDetails {
-    UUID uuid;
-    String email;
+    Member member;
 
-    public CustomUserDetails(UUID uuid, String email) {
-        this.uuid = uuid;
-        this.email = email;
+    public CustomUserDetails(Member member) {
+        this.member = member;
     }
 
     @Override

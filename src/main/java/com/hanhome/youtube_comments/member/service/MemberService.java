@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.member.service;
 
+import com.hanhome.youtube_comments.google.service.YoutubeDataService;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
 import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.repository.MemberRepository;
@@ -7,6 +8,7 @@ import com.hanhome.youtube_comments.oauth.dto.CustomTokenRecord;
 import com.hanhome.youtube_comments.oauth.dto.RenewAccessTokenDto;
 import com.hanhome.youtube_comments.oauth.provider.JwtTokenProvider;
 import com.hanhome.youtube_comments.redis.service.RedisService;
+import com.hanhome.youtube_comments.utils.AESUtil;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.apache.coyote.BadRequestException;
@@ -23,18 +25,23 @@ public class MemberService {
     private final MemberRepository memberRepository;
     private final JwtTokenProvider tokenProvider;
     private final RedisService redisService;
+    private final YoutubeDataService youtubeDataService;
+    private final AESUtil aesUtil;
 
     @Transactional
-    public Member upsert(OAuth2User oauth2User, String googleRefreshToken) {
+    public Member upsert(OAuth2User oauth2User, String googleAccessToken, String googleRefreshToken) throws Exception {
         String email = oauth2User.getAttribute("email");
 
         Member member = memberRepository.findByEmail(email)
-                .orElse(
-                        Member.builder()
-                                .email(email)
-                                .build()
-                );
-        member.setGoogleRefreshToken(googleRefreshToken);
+                .orElseGet(() -> {
+                    String channelId = youtubeDataService.getChannelId(googleAccessToken);
+                    return Member.builder()
+                            .channelId(channelId)
+                            .email(email)
+                            .build();
+                });
+        String encryptedGoogleRefreshToken = aesUtil.encrypt(googleRefreshToken);
+        member.setGoogleRefreshToken(encryptedGoogleRefreshToken);
 
         return memberRepository.save(member);
     }
