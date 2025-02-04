@@ -4,6 +4,7 @@ import com.hanhome.youtube_comments.google.dto.DeleteCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetVideosDto;
 import com.hanhome.youtube_comments.google.service.YoutubeDataService;
+import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.utils.UUIDFromContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
@@ -21,25 +22,33 @@ public class YoutubeDataController {
     private final YoutubeDataService commentService;
     private final UUIDFromContext uuidFromContext;
 
-    @GetMapping
-    public ResponseEntity<GetVideosDto.FromGoogle> getVideos(
+    @GetMapping("/videos")
+    public ResponseEntity<GetVideosDto.Response> getVideos(
             @Valid @ModelAttribute GetVideosDto.Request requestDto
-    ) {
-        UUID uuid = uuidFromContext.getUUID();
-        return ResponseEntity.ok(commentService.getVideos(requestDto, uuid));
+    ) throws Exception {
+        Member member = uuidFromContext.getMember();
+        return ResponseEntity.ok(commentService.getVideos(requestDto, member));
     }
 
-    @GetMapping("/{videoId}")
-    public ResponseEntity<GetCommentsDto.Response> getComments(
+    @GetMapping("/comments/by-channel")
+    public ResponseEntity<GetCommentsDto.Response> getCommentByChannelId(
+            @Valid @ModelAttribute GetCommentsDto.Request requestDto
+    ) throws Exception {
+        Member member = uuidFromContext.getMember();
+        return ResponseEntity.ok(commentService.getCommentsByChannelId(requestDto, member));
+    }
+
+    @GetMapping("/videos/{videoId}")
+    public ResponseEntity<GetCommentsDto.Response> getCommentsByVideoId(
             @Valid @ModelAttribute GetCommentsDto.Request requestDto,
             @PathVariable @Size(min = 1) String videoId
-    ) {
-        UUID uuid = uuidFromContext.getUUID();
-        return ResponseEntity.ok(commentService.getComments(requestDto, videoId, uuid));
+    ) throws Exception {
+        Member member = uuidFromContext.getMember();
+        return ResponseEntity.ok(commentService.getCommentsByVideoId(requestDto, videoId, member));
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> deleteComments(@ModelAttribute DeleteCommentsDto.Request requestDto) {
+    public ResponseEntity<Void> deleteComments(@ModelAttribute DeleteCommentsDto.Request requestDto) throws Exception {
         UUID uuid = uuidFromContext.getUUID();
         commentService.updateModerationAndAuthorBan(requestDto, uuid);
         return ResponseEntity.noContent().build();
