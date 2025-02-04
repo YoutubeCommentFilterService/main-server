@@ -2,3 +2,8 @@ data:
   youtube:
     api-key: ${GCP_API_KEY}
     access-token: ${GOOGLE_ACCESS_TOKEN}
+
+  predict-server:
+    scheme: ${PREDICT_SERVER_SCHEME}
+    host: ${PREDICT_SERVER_HOST}
+    port: ${PREDICT_SERVER_PORT}
