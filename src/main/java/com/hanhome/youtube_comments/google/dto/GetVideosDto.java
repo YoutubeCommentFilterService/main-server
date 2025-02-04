@@ -24,8 +24,8 @@ public class GetVideosDto {
     @Setter
     @Getter
     public static class Response {
-        private VideosInfo[] videos;
-        private boolean hasNext;
+        private List<FromGoogle.VideoResource> items;
+        private String isLast;
     }
 
     @Getter
@@ -41,10 +41,11 @@ public class GetVideosDto {
         @Setter
         @Builder
         public static class VideoResource {
-            private String videoId;
-            private String videoTitle;
-            private String videoThumb;
+            private String id;
+            private String title;
+            private String thumbnail;
             private LocalDate publishedAt;
+            private String description;
         }
     }
 }

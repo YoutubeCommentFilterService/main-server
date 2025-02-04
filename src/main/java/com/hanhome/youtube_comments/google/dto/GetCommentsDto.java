@@ -1,9 +1,8 @@
 package com.hanhome.youtube_comments.google.dto;
 
+import com.hanhome.youtube_comments.google.object.PredictResponseItem;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.springframework.lang.Nullable;
 
@@ -26,27 +25,7 @@ public class GetCommentsDto {
     @Setter
     @Builder
     public static class Response {
-        private List<FromGoogle.CommentThreadResource> items;
-        private Boolean isLast;
+        private List<PredictResponseItem> items;
+        private String isLast;
     }
-
-    @Getter
-    @Setter
-    @Builder
-    public static class FromGoogle {
-        private String nextPageToken;
-        private Integer totalResults;
-        private List<CommentThreadResource> items;
-        private Boolean isLast;
-
-        @Getter
-        @Setter
-        @Builder
-        public static class CommentThreadResource {
-            private String commentId;
-            private String textOriginal;
-            private String authorNickname;
-        }
-    }
-
 }
