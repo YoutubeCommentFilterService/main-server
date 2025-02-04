@@ -62,17 +62,21 @@ public class CustomOauth2SuccessHandler implements AuthenticationSuccessHandler 
         }
 
         OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
-        Member member = memberService.upsert(oauthUser, googleRefreshToken);
+        try {
+            Member member = memberService.upsert(oauthUser, googleAccessToken, googleRefreshToken);
 
-        redisService.save(redisGoogleAtKey + ":" + member.getId().toString(), googleAccessToken, 1, TimeUnit.HOURS);
+            redisService.save(redisGoogleAtKey + ":" + member.getId().toString(), googleAccessToken, 1, TimeUnit.HOURS);
 
-        CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());
-        long ttl = customAccessToken.ttl();
-        TimeUnit timeUnit = customAccessToken.timeUnit();
+            CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());
+            long ttl = customAccessToken.ttl();
+            TimeUnit timeUnit = customAccessToken.timeUnit();
 
-        Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
-        response.addCookie(accessTokenCookie);
+            Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
+            response.addCookie(accessTokenCookie);
 
-        response.sendRedirect("http://localhost:5173/after-login");
+            response.sendRedirect("http://localhost:5173/after-login");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
