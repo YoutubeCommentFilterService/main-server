@@ -2,15 +2,16 @@ package com.hanhome.youtube_comments.google.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.hanhome.youtube_comments.google.dto.CommentPredictDto;
 import com.hanhome.youtube_comments.google.dto.DeleteCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetVideosDto;
+import com.hanhome.youtube_comments.google.object.*;
+import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.redis.service.RedisService;
 import lombok.RequiredArgsConstructor;
-import org.apache.coyote.BadRequestException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriBuilder;
@@ -26,12 +27,14 @@ import java.util.concurrent.TimeUnit;
 public class YoutubeDataService {
     private final RedisService redisService;
     private final RenewGoogleTokenService googleTokenService;
+    private final PredictServerProperties predictServerProperties;
 
     private final WebClient webClient = WebClient.create();
     private final static int VIDEO_MAX_RESULT = 50;
     private final static int COMMENT_MAX_RESULT = 100;
     private final static String VIDEO_REDIS_KEY = "NEXT_VIDEO";
-    private final static String COMMENT_REDIS_KEY = "NEXT_COMMENT";
+    private final static String VIDEO_COMMENT_REDIS_KEY = "NEXT_COMMENT_V";
+    private final static String CHANNEL_COMMENT_REDIS_KEY = "NEXT_COMMENT_C";
     private final static int STEP = 10;
 
     @Value("${data.youtube.api-key}")
@@ -40,12 +43,27 @@ public class YoutubeDataService {
     @Value("${data.youtube.access-token}")
     private String redisGoogleAtKey;
 
-    private String getGoogleAccessToken(UUID uuid) {
+    private String getGoogleAccessToken(UUID uuid) throws Exception {
         String googleAccessToken = (String) redisService.get(redisGoogleAtKey + ":" + uuid);
         return googleAccessToken == null ? googleTokenService.renewAccessToken(uuid) : googleAccessToken;
     }
 
-    public GetVideosDto.FromGoogle getVideos(GetVideosDto.Request request, UUID uuid) {
+    public String getChannelId(String googleAccessToken) {
+        Map<String, Object> queries = generateDefaultQueries();
+        queries.put("part", "id");
+        queries.put("mine", true);
+
+        return webClient.get()
+                .uri(uriBuilder -> generateUri(uriBuilder, queries, "channels"))
+                .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .flatMap(this::generateChannelResponse)
+                .block();
+    }
+
+    public GetVideosDto.Response getVideos(GetVideosDto.Request request, Member member) throws Exception {
+        UUID uuid = member.getId();
         String googleAccessToken = getGoogleAccessToken(uuid);
 
         Map<String, Object> queries = generateDefaultQueries();
@@ -58,18 +76,13 @@ public class YoutubeDataService {
         queries.put("maxResults", maxResult);
 
         if (request.getPage() != 1) {
-            String nextToken = (String) redisService.get(VIDEO_REDIS_KEY + ":" + uuid);
-            if (nextToken != null) queries.put("pageToken", nextToken);
+            putNextPageTokenQuery(queries, VIDEO_REDIS_KEY, uuid);
         }
 
         GetVideosDto.FromGoogle fromGoogle = webClient.get()
                 .uri(uriBuilder -> generateUri(uriBuilder, queries, "search"))
                 .headers(headers -> setCommonHeader(headers, googleAccessToken))
                 .retrieve()
-                .onStatus( // 401 - 잘못된 토큰, 403 - unauthorized
-                        HttpStatusCode::is4xxClientError,
-                        response -> Mono.error(new BadRequestException("Re-login google"))
-                )
                 .bodyToMono(JsonNode.class)
                 .flatMap(this::generateVideosResponse)
                 .block();
@@ -82,60 +95,60 @@ public class YoutubeDataService {
             fromGoogle.setIsLast(true);
         }
 
-        return fromGoogle;
+        GetVideosDto.Response responseDto = new GetVideosDto.Response();
+        responseDto.setIsLast(fromGoogle.getIsLast() ? "Y" : "N");
+        responseDto.setItems(fromGoogle.getVideoResources());
+
+        return responseDto;
     }
 
-    public GetCommentsDto.Response getComments(GetCommentsDto.Request request, String videoId, UUID uuid) {
-        int step = 0;
-        boolean isLast = false;
+    public GetCommentsDto.Response getCommentsByChannelId(GetCommentsDto.Request request, Member member) throws Exception {
+        UUID uuid = member.getId();
+        String channelId = member.getChannelId();
+
+        String googleAccessToken = getGoogleAccessToken(uuid);
+
+        Map<String, Object> queries = generateDefaultQueries();
+        queries.put("part", "snippet,replies");
+        queries.put("allThreadsRelatedToChannelId", channelId);
+        queries.put("maxResults", request.getTake() == null ? VIDEO_MAX_RESULT : request.getTake());
+        if (request.getPage() != 1) putNextPageTokenQuery(queries, CHANNEL_COMMENT_REDIS_KEY, uuid);
+
+        List<PredictTargetItem> predictTargetItems = fetchPredictTargetComments(queries, uuid, googleAccessToken, CHANNEL_COMMENT_REDIS_KEY);
+
+        CommentPredictDto.Request predictRequest = new CommentPredictDto.Request(predictTargetItems);
+        List<PredictResponseItem> responseItems = predictComments(predictRequest, predictTargetItems);
+
+        Object nextToken = redisService.get(CHANNEL_COMMENT_REDIS_KEY + ":" + uuid);
+        return GetCommentsDto.Response.builder()
+                .items(responseItems)
+                .isLast(nextToken == null ? "Y" : "N")
+                .build();
+    }
+
+    public GetCommentsDto.Response getCommentsByVideoId(GetCommentsDto.Request request, String videoId, Member member) throws Exception {
+        UUID uuid = member.getId();
         String googleAccessToken = getGoogleAccessToken(uuid);
 
         Map<String, Object> queries = generateDefaultQueries();
         queries.put("part", "snippet");
         queries.put("videoId", videoId);
+        queries.put("maxResults", request.getTake() == null ? COMMENT_MAX_RESULT : request.getTake());
+        if (request.getPage() != 1) putNextPageTokenQuery(queries, VIDEO_COMMENT_REDIS_KEY, uuid);
 
-        int maxResult = request.getTake() == null ? COMMENT_MAX_RESULT : request.getTake();
-        queries.put("maxResults", maxResult);
+        List<PredictTargetItem> predictTargetItems = fetchPredictTargetComments(queries, uuid, googleAccessToken, VIDEO_COMMENT_REDIS_KEY);
 
-        if (request.getPage() != 1) {
-            String nextToken = (String) redisService.get(COMMENT_REDIS_KEY + ":" + uuid);
-            if (nextToken != null) queries.put("pageToken", nextToken);
-        }
+        CommentPredictDto.Request predictRequest = new CommentPredictDto.Request(predictTargetItems);
+        List<PredictResponseItem> responseItems = predictComments(predictRequest, predictTargetItems);
 
-        GetCommentsDto.FromGoogle fromGoogle = null;
-        List<GetCommentsDto.FromGoogle.CommentThreadResource> resources = new ArrayList<>();
-        for (step = 0; step < STEP; step++) {
-            fromGoogle = webClient.get()
-                    .uri(uriBuilder -> generateUri(uriBuilder, queries, "commentThreads"))
-                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-                    .flatMap(this::generateCommentsResponse)
-                    .block();
-
-            resources.addAll(fromGoogle.getItems());
-
-            if (fromGoogle.getTotalResults() == maxResult && !"".equals(fromGoogle.getNextPageToken())) {
-                queries.put("pageToken", fromGoogle.getNextPageToken());
-            } else {
-                redisService.remove(COMMENT_REDIS_KEY + ":" + uuid);
-                isLast = true;
-                break;
-            }
-        }
-
-        if (fromGoogle.getTotalResults() == maxResult && !"".equals(fromGoogle.getNextPageToken())) {
-            redisService.save(COMMENT_REDIS_KEY + ":" + uuid, fromGoogle.getNextPageToken(), 30, TimeUnit.MINUTES);
-            isLast = false;
-        }
-
+        Object nextToken = redisService.get(VIDEO_COMMENT_REDIS_KEY + ":" + uuid);
         return GetCommentsDto.Response.builder()
-                .items(resources)
-                .isLast(isLast)
+                .items(responseItems)
+                .isLast(nextToken == null ? "Y" : "N")
                 .build();
     }
 
-    public void updateModerationAndAuthorBan(DeleteCommentsDto.Request request, UUID uuid) {
+    public void updateModerationAndAuthorBan(DeleteCommentsDto.Request request, UUID uuid) throws Exception {
         String googleAccessToken = getGoogleAccessToken(uuid);
 
         // Remove Comment + Author Ban
@@ -175,6 +188,17 @@ public class YoutubeDataService {
         return queries;
     }
 
+    private void putNextPageTokenQuery(Map<String, Object> queries, String redisKeyPrefix, UUID uuid) {
+        String nextToken = (String) redisService.get(redisKeyPrefix + ":" + uuid);
+        if (nextToken != null) queries.put("pageToken", nextToken);
+    }
+
+    private Mono<String> generateChannelResponse(JsonNode rootNode) {
+        ArrayNode items = (ArrayNode) rootNode.path("items");
+        String channelId = items.get(0).path("id").asText("");
+        return Mono.just(channelId);
+    }
+
     private Mono<GetVideosDto.FromGoogle> generateVideosResponse(JsonNode rootNode) {
         JsonNode pageInfo = rootNode.path("pageInfo");
 
@@ -187,11 +211,12 @@ public class YoutubeDataService {
 
             GetVideosDto.FromGoogle.VideoResource resource =
                     GetVideosDto.FromGoogle.VideoResource.builder()
-                        .videoId(item.path("id").path("videoId").asText(""))
-                        .videoTitle(snippet.path("title").asText(""))
-                        .videoThumb(snippet.path("thumbnails").path("medium").path("url").asText(""))
-                        .publishedAt(zoneDateTime.toLocalDate())
-                        .build();
+                            .id(item.path("id").path("videoId").asText(""))
+                            .title(snippet.path("title").asText(""))
+                            .thumbnail(snippet.path("thumbnails").path("medium").path("url").asText(""))
+                            .description(snippet.path("description").asText(""))
+                            .publishedAt(zoneDateTime.toLocalDate())
+                            .build();
 
             resultVideoResources.add(resource);
         });
@@ -205,35 +230,119 @@ public class YoutubeDataService {
         return Mono.just(fromGoogle);
     }
 
-    private Mono<GetCommentsDto.FromGoogle> generateCommentsResponse(JsonNode rootPath) {
+
+    private List<PredictTargetItem> fetchPredictTargetComments(Map<String, Object> queries,
+                                                               UUID uuid,
+                                                               String googleAccessToken,
+                                                               String redisKey) {
+        List<PredictTargetItem> predictTargetItems = new ArrayList<>();
+        for (int step = 0; step < STEP; step++) {
+            YoutubeComment fromGoogle = webClient.get()
+                    .uri(uriBuilder -> generateUri(uriBuilder, queries, "commentThreads"))
+                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                    .retrieve()
+                    .bodyToMono(JsonNode.class)
+                    .flatMap(this::generateCommentsResponse)
+                    .block();
+
+            predictTargetItems.addAll(
+                    fromGoogle.getComments().stream()
+                            .map((comment) -> PredictTargetItem.builder()
+                                    .id(comment.getId())
+                                    .comment(comment.getComment())
+                                    .nickname((comment.getNickname())).build()
+                            ).toList()
+            );
+
+            if (!"".equals(fromGoogle.getNextPageToken())) {
+                queries.put("pageToken", fromGoogle.getNextPageToken());
+                redisService.save(redisKey + ":" + uuid, fromGoogle.getNextPageToken(), 30, TimeUnit.MINUTES);
+            } else {
+                redisService.remove(redisKey + ":" + uuid);
+                break;
+            }
+        }
+
+        return predictTargetItems;
+    }
+
+    private List<PredictResponseItem> predictComments(CommentPredictDto.Request predictRequest, List<PredictTargetItem> predictTargetItems) {
+        List<PredictResultItem> predictResults = webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .scheme(predictServerProperties.getScheme())
+                        .host(predictServerProperties.getHost())
+                        .port(predictServerProperties.getPort())
+                        .path("/predict")
+                        .build()
+                )
+                .bodyValue(predictRequest)
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .flatMap(this::generatePredictResponse)
+                .block();
+
+        List<PredictResponseItem> responseResults = new ArrayList<>();
+        for (int i = 0; i < predictTargetItems.size(); i++) {
+            PredictResultItem predictResponse = predictResults.get(i);
+            PredictTargetItem predictItem = predictTargetItems.get(i);
+            responseResults.add(
+                    PredictResponseItem.builder()
+                            .id(predictResponse.getId())
+                            .commentPredict(predictResponse.getCommentPredicted())
+                            .nicknamePredict(predictResponse.getNicknamePredicted())
+                            .comment(predictItem.getComment())
+                            .nickname(predictItem.getNickname())
+                            .build()
+            );
+        }
+
+        return responseResults;
+    }
+
+    private Mono<YoutubeComment> generateCommentsResponse(JsonNode rootPath) {
         JsonNode pageInfo = rootPath.path("pageInfo");
 
-        List<GetCommentsDto.FromGoogle.CommentThreadResource> resultCommentResources = new ArrayList<>();
+        String nextPageToken = pageInfo.path("nextPageToken").asText("");
+
         ArrayNode items = (ArrayNode) rootPath.path("items");
+        List<YoutubeComment.Comment> comments = new ArrayList<>();
         items.forEach(item -> {
-            String commentId = item.path("id").asText("");
+            String id = item.path("id").asText();
 
             JsonNode snippet = item.path("snippet").path("topLevelComment").path("snippet");
-            String authorDisplayName = snippet.path("authorDisplayName").asText("");
-            String textOriginal = snippet.path("textOriginal").asText("");
+            String nickname = snippet.path("authorDisplayName").asText();
+            String comment = snippet.path("textOriginal").asText();
 
-            GetCommentsDto.FromGoogle.CommentThreadResource resource =
-                    GetCommentsDto.FromGoogle.CommentThreadResource.builder()
-                        .commentId(commentId)
-                        .textOriginal(textOriginal)
-                        .authorNickname(authorDisplayName)
-                        .build();
-
-            resultCommentResources.add(resource);
+            comments.add(YoutubeComment.Comment.builder()
+                                .id(id)
+                                .nickname(nickname)
+                                .comment(comment)
+                                .build()
+            );
         });
 
-        GetCommentsDto.FromGoogle fromGoogle = GetCommentsDto.FromGoogle.builder()
-                .items(resultCommentResources)
-                .totalResults(pageInfo.path("totalResults").asInt(0))
-                .nextPageToken(rootPath.path("nextPageToken").asText(""))
-                .build();
+        return Mono.just(YoutubeComment.builder()
+                                .comments(comments)
+                                .nextPageToken(nextPageToken)
+                                .build()
+        );
+    }
 
-        return Mono.just(fromGoogle);
+    private Mono<List<PredictResultItem>> generatePredictResponse(JsonNode rootPath) {
+        ArrayNode predictedItems = (ArrayNode) rootPath.path("items");
+
+        List<PredictResultItem> results = new ArrayList<>();
+        predictedItems.forEach((item) -> {
+            System.out.println(item);
+            results.add(
+                    PredictResultItem.builder()
+                        .id(item.get("id").asText())
+                        .commentPredicted(item.get("comment_predicted").asText())
+                        .nicknamePredicted(item.get("nickname_predicted").asText())
+                        .build()
+            );
+        });
+        return Mono.just(results);
     }
 
     private URI generateUri(UriBuilder uriBuilder, Map<String, Object> queries, String endpoint) {
