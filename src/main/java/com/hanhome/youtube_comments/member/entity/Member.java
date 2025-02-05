@@ -23,6 +23,7 @@ public class Member {
     private String googleRefreshToken;
     private String refreshToken;
     private String channelId;
+    private String playlistId;
 
     public void setRefreshToken(String refreshToken) {
         this.refreshToken = refreshToken;

@@ -3,6 +3,7 @@ package com.hanhome.youtube_comments.member.service;
 import com.hanhome.youtube_comments.google.service.YoutubeDataService;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
 import com.hanhome.youtube_comments.member.entity.Member;
+import com.hanhome.youtube_comments.member.object.YoutubeAccountDetail;
 import com.hanhome.youtube_comments.member.repository.MemberRepository;
 import com.hanhome.youtube_comments.oauth.dto.CustomTokenRecord;
 import com.hanhome.youtube_comments.oauth.dto.RenewAccessTokenDto;
@@ -34,9 +35,10 @@ public class MemberService {
 
         Member member = memberRepository.findByEmail(email)
                 .orElseGet(() -> {
-                    String channelId = youtubeDataService.getChannelId(googleAccessToken);
+                    YoutubeAccountDetail detail = youtubeDataService.getYoutubeAccountDetail(googleAccessToken);
                     return Member.builder()
-                            .channelId(channelId)
+                            .channelId(detail.getChannelId())
+                            .playlistId(detail.getPlaylistId())
                             .email(email)
                             .build();
                 });

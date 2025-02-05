@@ -8,6 +8,7 @@ import com.hanhome.youtube_comments.google.dto.GetCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetVideosDto;
 import com.hanhome.youtube_comments.google.object.*;
 import com.hanhome.youtube_comments.member.entity.Member;
+import com.hanhome.youtube_comments.member.object.YoutubeAccountDetail;
 import com.hanhome.youtube_comments.redis.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,7 +51,7 @@ public class YoutubeDataService {
 
     public String getChannelId(String googleAccessToken) {
         Map<String, Object> queries = generateDefaultQueries();
-        queries.put("part", "id");
+        queries.put("part", "id,contentDetails");
         queries.put("mine", true);
 
         return webClient.get()
@@ -58,7 +59,21 @@ public class YoutubeDataService {
                 .headers(headers -> setCommonHeader(headers, googleAccessToken))
                 .retrieve()
                 .bodyToMono(JsonNode.class)
-                .flatMap(this::generateChannelResponse)
+                .flatMap(this::generateChannelId)
+                .block();
+    }
+
+    public YoutubeAccountDetail getYoutubeAccountDetail(String googleAccessToken) {
+        Map<String, Object> queries = generateDefaultQueries();
+        queries.put("part", "id,contentDetails");
+        queries.put("mine", true);
+
+        return webClient.get()
+                .uri(uriBuilder -> generateUri(uriBuilder, queries, "channels"))
+                .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .flatMap(this::generateYoutubeChannelDetail)
                 .block();
     }
 
@@ -84,10 +99,10 @@ public class YoutubeDataService {
                 .headers(headers -> setCommonHeader(headers, googleAccessToken))
                 .retrieve()
                 .bodyToMono(JsonNode.class)
-                .flatMap(this::generateVideosResponse)
+                .flatMap((rootNode) -> generateVideosResponse(rootNode, true))
                 .block();
 
-        if (fromGoogle.getTotalResults() == maxResult && !"".equals(fromGoogle.getNextPageToken())) {
+        if (!"".equals(fromGoogle.getNextPageToken())) {
             redisService.save(VIDEO_REDIS_KEY + ":" + uuid, fromGoogle.getNextPageToken(), 30, TimeUnit.MINUTES);
             fromGoogle.setIsLast(false);
         } else {
@@ -95,11 +110,48 @@ public class YoutubeDataService {
             fromGoogle.setIsLast(true);
         }
 
-        GetVideosDto.Response responseDto = new GetVideosDto.Response();
-        responseDto.setIsLast(fromGoogle.getIsLast() ? "Y" : "N");
-        responseDto.setItems(fromGoogle.getVideoResources());
+        return GetVideosDto.Response.builder()
+                .isLast(fromGoogle.getIsLast() ? "Y" : "N")
+                .items(fromGoogle.getVideoResources())
+                .build();
+    }
 
-        return responseDto;
+    public GetVideosDto.Response getVideosByPlaylist(GetVideosDto.Request request, Member member) throws Exception {
+        UUID uuid = member.getId();
+        String playlistId = member.getPlaylistId();
+        String googleAccessToken = getGoogleAccessToken(uuid);
+
+        Map<String, Object> queries = generateDefaultQueries();
+        queries.put("part", "snippet");
+        queries.put("playlistId", playlistId);
+
+        int maxResult = request.getTake() == null ? VIDEO_MAX_RESULT : request.getTake();
+        queries.put("maxResults", maxResult);
+
+        if (request.getPage() != 1) {
+            putNextPageTokenQuery(queries, VIDEO_REDIS_KEY, uuid);
+        }
+
+        GetVideosDto.FromGoogle fromGoogle = webClient.get()
+                .uri(uriBuilder -> generateUri(uriBuilder, queries, "playlistItems"))
+                .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .flatMap((rootNode) -> generateVideosResponse(rootNode, false))
+                .block();
+
+        if (!"".equals(fromGoogle.getNextPageToken())) {
+            redisService.save(VIDEO_REDIS_KEY + ":" + uuid, fromGoogle.getNextPageToken(), 30, TimeUnit.MINUTES);
+            fromGoogle.setIsLast(false);
+        } else {
+            redisService.remove(VIDEO_REDIS_KEY + ":" + uuid);
+            fromGoogle.setIsLast(true);
+        }
+
+        return GetVideosDto.Response.builder()
+                .isLast(fromGoogle.getIsLast() ? "Y" : "N")
+                .items(fromGoogle.getVideoResources())
+                .build();
     }
 
     public GetCommentsDto.Response getCommentsByChannelId(GetCommentsDto.Request request, Member member) throws Exception {
@@ -193,29 +245,42 @@ public class YoutubeDataService {
         if (nextToken != null) queries.put("pageToken", nextToken);
     }
 
-    private Mono<String> generateChannelResponse(JsonNode rootNode) {
+    private Mono<String> generateChannelId(JsonNode rootNode) {
         ArrayNode items = (ArrayNode) rootNode.path("items");
         String channelId = items.get(0).path("id").asText("");
         return Mono.just(channelId);
     }
 
-    private Mono<GetVideosDto.FromGoogle> generateVideosResponse(JsonNode rootNode) {
-        JsonNode pageInfo = rootNode.path("pageInfo");
+    private Mono<YoutubeAccountDetail> generateYoutubeChannelDetail(JsonNode rootNode) {
+        ArrayNode items = (ArrayNode) rootNode.path("items");
 
-        List<GetVideosDto.FromGoogle.VideoResource> resultVideoResources = new ArrayList<>();
+        JsonNode channel = items.get(0);
+        String channelId = channel.path("id").asText();
+        String uploadsPlaylistId = channel.path("contentDetails").path("relatedPlaylists").path("uploads").asText("");
+
+        YoutubeAccountDetail detail = YoutubeAccountDetail.builder()
+                .channelId(channelId)
+                .playlistId(uploadsPlaylistId)
+                .build();
+        return Mono.just(detail);
+    }
+
+    private Mono<GetVideosDto.FromGoogle> generateVideosResponse(JsonNode rootNode, boolean fromSearch) {
+        List<YoutubeVideo> resultVideoResources = new ArrayList<>();
         ArrayNode items = (ArrayNode) rootNode.path("items");
         items.forEach(item -> {
             JsonNode snippet = item.path("snippet");
             String publishedAt = snippet.path("publishedAt").asText();
-            ZonedDateTime zoneDateTime = ZonedDateTime.parse(publishedAt);
+            ZonedDateTime zonedDateTime = ZonedDateTime.parse(publishedAt);
 
-            GetVideosDto.FromGoogle.VideoResource resource =
-                    GetVideosDto.FromGoogle.VideoResource.builder()
-                            .id(item.path("id").path("videoId").asText(""))
+            String videoIdPath = fromSearch ? "id" : "resourceId";
+            YoutubeVideo resource =
+                    YoutubeVideo.builder()
+                            .id(item.path(videoIdPath).path("videoId").asText(""))
                             .title(snippet.path("title").asText(""))
                             .thumbnail(snippet.path("thumbnails").path("medium").path("url").asText(""))
                             .description(snippet.path("description").asText(""))
-                            .publishedAt(zoneDateTime.toLocalDate())
+                            .publishedAt(zonedDateTime.toLocalDate())
                             .build();
 
             resultVideoResources.add(resource);
@@ -223,13 +288,11 @@ public class YoutubeDataService {
 
         GetVideosDto.FromGoogle fromGoogle = GetVideosDto.FromGoogle.builder()
                 .videoResources(resultVideoResources)
-                .totalResults(pageInfo.path("totalResults").asInt(0))
                 .nextPageToken(rootNode.path("nextPageToken").asText(""))
                 .build();
 
         return Mono.just(fromGoogle);
     }
-
 
     private List<PredictTargetItem> fetchPredictTargetComments(Map<String, Object> queries,
                                                                UUID uuid,
@@ -284,7 +347,12 @@ public class YoutubeDataService {
         List<PredictResponseItem> responseResults = new ArrayList<>();
         for (int i = 0; i < predictTargetItems.size(); i++) {
             PredictResultItem predictResponse = predictResults.get(i);
+            if ("정상".equals(predictResponse.getCommentPredicted())
+                    && "정상".equals(predictResponse.getNicknamePredicted())
+            ) continue;
+
             PredictTargetItem predictItem = predictTargetItems.get(i);
+
             responseResults.add(
                     PredictResponseItem.builder()
                             .id(predictResponse.getId())
@@ -333,7 +401,6 @@ public class YoutubeDataService {
 
         List<PredictResultItem> results = new ArrayList<>();
         predictedItems.forEach((item) -> {
-            System.out.println(item);
             results.add(
                     PredictResultItem.builder()
                         .id(item.get("id").asText())
