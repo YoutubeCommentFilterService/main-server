@@ -27,7 +27,7 @@ public class YoutubeDataController {
             @Valid @ModelAttribute GetVideosDto.Request requestDto
     ) throws Exception {
         Member member = uuidFromContext.getMember();
-        return ResponseEntity.ok(commentService.getVideos(requestDto, member));
+        return ResponseEntity.ok(commentService.getVideosByPlaylist(requestDto, member));
     }
 
     @GetMapping("/comments/by-channel")

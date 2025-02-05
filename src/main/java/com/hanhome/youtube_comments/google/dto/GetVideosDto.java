@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.google.dto;
 
+import com.hanhome.youtube_comments.google.object.YoutubeVideo;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.*;
@@ -23,8 +24,9 @@ public class GetVideosDto {
 
     @Setter
     @Getter
+    @Builder
     public static class Response {
-        private List<FromGoogle.VideoResource> items;
+        private List<YoutubeVideo> items;
         private String isLast;
     }
 
@@ -33,19 +35,7 @@ public class GetVideosDto {
     @Builder
     public static class FromGoogle {
         private Boolean isLast;
-        private Integer totalResults;
         private String nextPageToken;
-        private List<VideoResource> videoResources;
-
-        @Getter
-        @Setter
-        @Builder
-        public static class VideoResource {
-            private String id;
-            private String title;
-            private String thumbnail;
-            private LocalDate publishedAt;
-            private String description;
-        }
+        private List<YoutubeVideo> videoResources;
     }
 }
