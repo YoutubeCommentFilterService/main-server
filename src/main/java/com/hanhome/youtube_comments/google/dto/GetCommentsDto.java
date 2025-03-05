@@ -1,7 +1,6 @@
 package com.hanhome.youtube_comments.google.dto;
 
 import com.hanhome.youtube_comments.google.object.PredictResponseItem;
-import com.hanhome.youtube_comments.google.object.PredictCategory;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.*;
@@ -28,6 +27,5 @@ public class GetCommentsDto {
     public static class Response {
         private List<PredictResponseItem> items;
         private String isLast;
-        private PredictCategory predictCategory;
     }
 }

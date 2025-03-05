@@ -172,12 +172,11 @@ public class YoutubeDataService {
         List<PredictTargetItem> predictTargetItems = fetchPredictTargetComments(queries, uuid, googleAccessToken, CHANNEL_COMMENT_REDIS_KEY);
 
         CommentPredictDto.Request predictRequest = new CommentPredictDto.Request(predictTargetItems);
-        PredictResponse predictResponse = predictComments(predictRequest, predictTargetItems);
+        List<PredictResponseItem> predictResponse = predictComments(predictRequest, predictTargetItems);
 
         Object nextToken = redisService.get(CHANNEL_COMMENT_REDIS_KEY + ":" + uuid);
         return GetCommentsDto.Response.builder()
-                .items(predictResponse.getPredictResponseItems())
-                .predictCategory(predictResponse.getPredictCategory())
+                .items(predictResponse)
                 .isLast(nextToken == null ? "Y" : "N")
                 .build();
     }
@@ -195,12 +194,11 @@ public class YoutubeDataService {
         List<PredictTargetItem> predictTargetItems = fetchPredictTargetComments(queries, uuid, googleAccessToken, VIDEO_COMMENT_REDIS_KEY);
 
         CommentPredictDto.Request predictRequest = new CommentPredictDto.Request(predictTargetItems);
-        PredictResponse predictResponse = predictComments(predictRequest, predictTargetItems);
+        List<PredictResponseItem> predictResponse = predictComments(predictRequest, predictTargetItems);
 
         Object nextToken = redisService.get(VIDEO_COMMENT_REDIS_KEY + ":" + uuid);
         return GetCommentsDto.Response.builder()
-                .items(predictResponse.getPredictResponseItems())
-                .predictCategory(predictResponse.getPredictCategory())
+                .items(predictResponse)
                 .isLast(nextToken == null ? "Y" : "N")
                 .build();
     }
@@ -333,8 +331,8 @@ public class YoutubeDataService {
         return predictTargetItems;
     }
 
-    private PredictResponse predictComments(CommentPredictDto.Request predictRequest, List<PredictTargetItem> predictTargetItems) {
-        PredictResult predictResult = webClient.post()
+    private List<PredictResponseItem> predictComments(CommentPredictDto.Request predictRequest, List<PredictTargetItem> predictTargetItems) {
+        List<PredictResultItem> predictResultItems = webClient.post()
                 .uri(uriBuilder -> uriBuilder
                         .scheme(predictServerProperties.getScheme())
                         .host(predictServerProperties.getHost())
@@ -347,8 +345,6 @@ public class YoutubeDataService {
                 .bodyToMono(JsonNode.class)
                 .flatMap(this::generatePredictResponse)
                 .block();
-
-        List<PredictResultItem> predictResultItems = predictResult.getPredictResultItems();
 
         List<PredictResponseItem> responsePredictedItems = new ArrayList<>();
         for (int i = 0; i < predictTargetItems.size(); i++) {
@@ -372,13 +368,7 @@ public class YoutubeDataService {
             );
         }
 
-        PredictCategory predictCategory = predictResult.getPredictCategory();
-        PredictResponse finalResult = PredictResponse.builder()
-                .predictCategory(predictCategory)
-                .predictResponseItems(responsePredictedItems)
-                .build();
-
-        return finalResult;
+        return responsePredictedItems;
     }
 
     private Mono<YoutubeComment> generateCommentsResponse(JsonNode rootPath) {
@@ -410,12 +400,9 @@ public class YoutubeDataService {
         );
     }
 
-    private Mono<PredictResult> generatePredictResponse(JsonNode rootPath) {
-        ArrayNode nicknameCategories = (ArrayNode) rootPath.path("nickname_categories");
-        ArrayNode commentCategories = (ArrayNode) rootPath.path("comment_categories");
-        ArrayNode predictedItems = (ArrayNode) rootPath.path("items");
-
+    private Mono<List<PredictResultItem>> generatePredictResponse(JsonNode rootPath) {
         List<PredictResultItem> resultItems = new ArrayList<>();
+        ArrayNode predictedItems = (ArrayNode) rootPath.path("items");
         predictedItems.forEach((item) -> {
             List<Float> nicknameProb = generateListFromArrayNode((ArrayNode) item.path("nickname_predicted_prob"), node -> (float) node.asDouble());
             List<Float> commentProb = generateListFromArrayNode((ArrayNode) item.path("comment_predicted_prob"), node -> (float) node.asDouble());
@@ -431,19 +418,7 @@ public class YoutubeDataService {
             );
         });
 
-        List<String> commentPredictCategory = generateListFromArrayNode(commentCategories, JsonNode::asText);
-        List<String> nicknamePredictCategory = generateListFromArrayNode(nicknameCategories, JsonNode::asText);
-        PredictCategory categories = PredictCategory.builder()
-                .nicknamePredictCategory(nicknamePredictCategory)
-                .commentPredictCategory(commentPredictCategory)
-                .build();
-
-        PredictResult result = PredictResult.builder()
-                .predictCategory(categories)
-                .predictResultItems(resultItems)
-                .build();
-
-        return Mono.just(result);
+        return Mono.just(resultItems);
     }
 
     private <T> List<T> generateListFromArrayNode(ArrayNode arrayNode, Function<JsonNode, T> mapper) {

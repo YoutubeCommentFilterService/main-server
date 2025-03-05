@@ -8,6 +8,5 @@ import java.util.List;
 @Getter
 @Builder
 public class PredictResult {
-    private PredictCategory predictCategory;
     private List<PredictResultItem> predictResultItems;
 }
