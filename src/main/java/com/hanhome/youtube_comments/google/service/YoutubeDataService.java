@@ -22,6 +22,9 @@ import java.net.URI;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 @Service
 @RequiredArgsConstructor
@@ -169,11 +172,12 @@ public class YoutubeDataService {
         List<PredictTargetItem> predictTargetItems = fetchPredictTargetComments(queries, uuid, googleAccessToken, CHANNEL_COMMENT_REDIS_KEY);
 
         CommentPredictDto.Request predictRequest = new CommentPredictDto.Request(predictTargetItems);
-        List<PredictResponseItem> responseItems = predictComments(predictRequest, predictTargetItems);
+        PredictResponse predictResponse = predictComments(predictRequest, predictTargetItems);
 
         Object nextToken = redisService.get(CHANNEL_COMMENT_REDIS_KEY + ":" + uuid);
         return GetCommentsDto.Response.builder()
-                .items(responseItems)
+                .items(predictResponse.getPredictResponseItems())
+                .predictCategory(predictResponse.getPredictCategory())
                 .isLast(nextToken == null ? "Y" : "N")
                 .build();
     }
@@ -191,11 +195,12 @@ public class YoutubeDataService {
         List<PredictTargetItem> predictTargetItems = fetchPredictTargetComments(queries, uuid, googleAccessToken, VIDEO_COMMENT_REDIS_KEY);
 
         CommentPredictDto.Request predictRequest = new CommentPredictDto.Request(predictTargetItems);
-        List<PredictResponseItem> responseItems = predictComments(predictRequest, predictTargetItems);
+        PredictResponse predictResponse = predictComments(predictRequest, predictTargetItems);
 
         Object nextToken = redisService.get(VIDEO_COMMENT_REDIS_KEY + ":" + uuid);
         return GetCommentsDto.Response.builder()
-                .items(responseItems)
+                .items(predictResponse.getPredictResponseItems())
+                .predictCategory(predictResponse.getPredictCategory())
                 .isLast(nextToken == null ? "Y" : "N")
                 .build();
     }
@@ -272,15 +277,14 @@ public class YoutubeDataService {
             JsonNode snippet = item.path("snippet");
             String publishedAt = snippet.path("publishedAt").asText();
             ZonedDateTime zonedDateTime = ZonedDateTime.parse(publishedAt);
-
             String videoIdPath = fromSearch ? "id" : "resourceId";
             YoutubeVideo resource =
                     YoutubeVideo.builder()
-                            .id(item.path(videoIdPath).path("videoId").asText(""))
+                            .id(snippet.path(videoIdPath).path("videoId").asText(""))
                             .title(snippet.path("title").asText(""))
                             .thumbnail(snippet.path("thumbnails").path("medium").path("url").asText(""))
                             .description(snippet.path("description").asText(""))
-                            .publishedAt(zonedDateTime.toLocalDate())
+                            .publishedAt(zonedDateTime.toLocalDateTime())
                             .build();
 
             resultVideoResources.add(resource);
@@ -329,8 +333,8 @@ public class YoutubeDataService {
         return predictTargetItems;
     }
 
-    private List<PredictResponseItem> predictComments(CommentPredictDto.Request predictRequest, List<PredictTargetItem> predictTargetItems) {
-        List<PredictResultItem> predictResults = webClient.post()
+    private PredictResponse predictComments(CommentPredictDto.Request predictRequest, List<PredictTargetItem> predictTargetItems) {
+        PredictResult predictResult = webClient.post()
                 .uri(uriBuilder -> uriBuilder
                         .scheme(predictServerProperties.getScheme())
                         .host(predictServerProperties.getHost())
@@ -344,27 +348,37 @@ public class YoutubeDataService {
                 .flatMap(this::generatePredictResponse)
                 .block();
 
-        List<PredictResponseItem> responseResults = new ArrayList<>();
+        List<PredictResultItem> predictResultItems = predictResult.getPredictResultItems();
+
+        List<PredictResponseItem> responsePredictedItems = new ArrayList<>();
         for (int i = 0; i < predictTargetItems.size(); i++) {
-            PredictResultItem predictResponse = predictResults.get(i);
-            if ("정상".equals(predictResponse.getCommentPredicted())
-                    && "정상".equals(predictResponse.getNicknamePredicted())
-            ) continue;
+            PredictResultItem predictResponse = predictResultItems.get(i);
+//            if ("정상".equals(predictResponse.getCommentPredicted())
+//                    && "정상".equals(predictResponse.getNicknamePredicted())
+//            ) continue;
 
-            PredictTargetItem predictItem = predictTargetItems.get(i);
+            PredictTargetItem predictTargetItem = predictTargetItems.get(i);
 
-            responseResults.add(
+            responsePredictedItems.add(
                     PredictResponseItem.builder()
+                            .comment(predictTargetItem.getComment())
+                            .nickname(predictTargetItem.getNickname())
                             .id(predictResponse.getId())
                             .commentPredict(predictResponse.getCommentPredicted())
                             .nicknamePredict(predictResponse.getNicknamePredicted())
-                            .comment(predictItem.getComment())
-                            .nickname(predictItem.getNickname())
+                            .commentProb(predictResponse.getCommentProb())
+                            .nicknameProb(predictResponse.getNicknameProb())
                             .build()
             );
         }
 
-        return responseResults;
+        PredictCategory predictCategory = predictResult.getPredictCategory();
+        PredictResponse finalResult = PredictResponse.builder()
+                .predictCategory(predictCategory)
+                .predictResponseItems(responsePredictedItems)
+                .build();
+
+        return finalResult;
     }
 
     private Mono<YoutubeComment> generateCommentsResponse(JsonNode rootPath) {
@@ -396,20 +410,46 @@ public class YoutubeDataService {
         );
     }
 
-    private Mono<List<PredictResultItem>> generatePredictResponse(JsonNode rootPath) {
+    private Mono<PredictResult> generatePredictResponse(JsonNode rootPath) {
+        ArrayNode nicknameCategories = (ArrayNode) rootPath.path("nickname_categories");
+        ArrayNode commentCategories = (ArrayNode) rootPath.path("comment_categories");
         ArrayNode predictedItems = (ArrayNode) rootPath.path("items");
 
-        List<PredictResultItem> results = new ArrayList<>();
+        List<PredictResultItem> resultItems = new ArrayList<>();
         predictedItems.forEach((item) -> {
-            results.add(
+            List<Float> nicknameProb = generateListFromArrayNode((ArrayNode) item.path("nickname_predicted_prob"), node -> (float) node.asDouble());
+            List<Float> commentProb = generateListFromArrayNode((ArrayNode) item.path("comment_predicted_prob"), node -> (float) node.asDouble());
+
+            resultItems.add(
                     PredictResultItem.builder()
                         .id(item.get("id").asText())
                         .commentPredicted(item.get("comment_predicted").asText())
                         .nicknamePredicted(item.get("nickname_predicted").asText())
+                        .commentProb(commentProb)
+                        .nicknameProb(nicknameProb)
                         .build()
             );
         });
-        return Mono.just(results);
+
+        List<String> commentPredictCategory = generateListFromArrayNode(commentCategories, JsonNode::asText);
+        List<String> nicknamePredictCategory = generateListFromArrayNode(nicknameCategories, JsonNode::asText);
+        PredictCategory categories = PredictCategory.builder()
+                .nicknamePredictCategory(nicknamePredictCategory)
+                .commentPredictCategory(commentPredictCategory)
+                .build();
+
+        PredictResult result = PredictResult.builder()
+                .predictCategory(categories)
+                .predictResultItems(resultItems)
+                .build();
+
+        return Mono.just(result);
+    }
+
+    private <T> List<T> generateListFromArrayNode(ArrayNode arrayNode, Function<JsonNode, T> mapper) {
+        return StreamSupport.stream(arrayNode.spliterator(), false)
+                .map(mapper)
+                .collect(Collectors.toList());
     }
 
     private URI generateUri(UriBuilder uriBuilder, Map<String, Object> queries, String endpoint) {
