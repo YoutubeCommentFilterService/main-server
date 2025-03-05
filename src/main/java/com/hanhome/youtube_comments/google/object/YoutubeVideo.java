@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -14,6 +14,6 @@ public class YoutubeVideo {
     private String id;
     private String title;
     private String thumbnail;
-    private LocalDate publishedAt;
+    private LocalDateTime publishedAt;
     private String description;
 }
