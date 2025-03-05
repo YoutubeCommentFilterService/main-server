@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 @RequiredArgsConstructor
 @Controller
-@RequestMapping("/member")
+@RequestMapping("/api/member")
 public class MemberController {
     private final MemberService memberService;
     private final CookieService cookieService;
