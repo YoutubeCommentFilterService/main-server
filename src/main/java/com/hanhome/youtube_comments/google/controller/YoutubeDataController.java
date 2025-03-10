@@ -48,7 +48,7 @@ public class YoutubeDataController {
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> deleteComments(@ModelAttribute DeleteCommentsDto.Request requestDto) throws Exception {
+    public ResponseEntity<Void> deleteComments(@RequestBody DeleteCommentsDto.Request requestDto) throws Exception {
         UUID uuid = uuidFromContext.getUUID();
         commentService.updateModerationAndAuthorBan(requestDto, uuid);
         return ResponseEntity.noContent().build();
