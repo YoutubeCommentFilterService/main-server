@@ -13,7 +13,6 @@ public class RenewGoogleTokenDto {
     }
 
     @Getter
-    @Setter
     @Builder
     public static class Response {
         private String accessToken;

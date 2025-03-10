@@ -5,9 +5,11 @@ import lombok.Getter;
 
 import java.util.List;
 
-@Getter
-@Builder
 public class PredictCategoryDto {
-    List<String> nicknameCategories;
-    List<String> commentCategories;
+    @Builder
+    @Getter
+    public static class Response {
+        private List<String> nicknameCategories;
+        private List<String> commentCategories;
+    }
 }
