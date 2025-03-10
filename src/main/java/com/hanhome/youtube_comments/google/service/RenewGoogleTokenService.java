@@ -6,12 +6,9 @@ import com.hanhome.youtube_comments.redis.service.RedisService;
 import com.hanhome.youtube_comments.member.repository.MemberRepository;
 import com.hanhome.youtube_comments.utils.AESUtil;
 import lombok.RequiredArgsConstructor;
-import org.apache.coyote.BadRequestException;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
 import java.util.UUID;
