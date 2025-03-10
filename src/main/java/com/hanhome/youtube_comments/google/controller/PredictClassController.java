@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 public class PredictClassController {
     private final PredictClassService predictClassService;
     @GetMapping
-    public ResponseEntity<PredictCategoryDto> getPredictClasses() {
+    public ResponseEntity<PredictCategoryDto.Response> getPredictClasses() {
         return ResponseEntity.ok(predictClassService.getPredictClasses());
     }
 }

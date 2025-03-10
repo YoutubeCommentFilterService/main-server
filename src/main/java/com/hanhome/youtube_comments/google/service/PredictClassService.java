@@ -18,8 +18,8 @@ public class PredictClassService {
     private final PredictServerProperties predictServerProperties;
     private final WebClient webClient = WebClient.create();
 
-    public PredictCategoryDto getPredictClasses() {
-        PredictCategoryDto categories = webClient.get()
+    public PredictCategoryDto.Response getPredictClasses() {
+        PredictCategoryDto.Response categories = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .scheme(predictServerProperties.getScheme())
                         .host(predictServerProperties.getHost())
@@ -36,7 +36,7 @@ public class PredictClassService {
                     List<String> commentCategories = StreamSupport.stream(commentCategoryNode.spliterator(), false)
                             .map(JsonNode::asText).toList();
 
-                    PredictCategoryDto predictCategory = PredictCategoryDto.builder()
+                    PredictCategoryDto.Response predictCategory = PredictCategoryDto.Response.builder()
                             .nicknameCategories(nicknameCategories)
                             .commentCategories(commentCategories)
                             .build();
