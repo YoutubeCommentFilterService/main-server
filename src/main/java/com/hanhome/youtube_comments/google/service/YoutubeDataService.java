@@ -1,6 +1,7 @@
 package com.hanhome.youtube_comments.google.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.hanhome.youtube_comments.google.dto.CommentPredictDto;
 import com.hanhome.youtube_comments.google.dto.DeleteCommentsDto;
@@ -228,7 +229,7 @@ public class YoutubeDataService {
             justRemoveQueries.put("moderationStatus", "rejected");
 
             webClient.post()
-                    .uri(uriBuilder -> generateUri(uriBuilder, justRemoveQueries, "setModerationStatus"))
+                    .uri(uriBuilder -> generateUri(uriBuilder, justRemoveQueries, "comments/setModerationStatus"))
                     .headers(headers -> setCommonHeader(headers, googleAccessToken))
                     .retrieve()
                     .bodyToMono(Void.class)
@@ -302,7 +303,7 @@ public class YoutubeDataService {
                                                                String redisKey) {
         List<PredictTargetItem> predictTargetItems = new ArrayList<>();
         for (int step = 0; step < STEP; step++) {
-            YoutubeComment fromGoogle = webClient.get()
+            GetCommentsDto.FromGoogle fromGoogle = webClient.get()
                     .uri(uriBuilder -> generateUri(uriBuilder, queries, "commentThreads"))
                     .headers(headers -> setCommonHeader(headers, googleAccessToken))
                     .retrieve()
@@ -311,12 +312,14 @@ public class YoutubeDataService {
                     .block();
 
             predictTargetItems.addAll(
-                    fromGoogle.getComments().stream()
-                            .map((comment) -> PredictTargetItem.builder()
+                    fromGoogle.getComments().stream().map((comment) ->
+                            PredictTargetItem.builder()
+                                    .profileImage(comment.getProfileImage())
                                     .id(comment.getId())
                                     .comment(comment.getComment())
-                                    .nickname((comment.getNickname())).build()
-                            ).toList()
+                                    .nickname(comment.getNickname()
+                            ).build()
+                    ).toList()
             );
 
             if (!"".equals(fromGoogle.getNextPageToken())) {
@@ -357,9 +360,10 @@ public class YoutubeDataService {
 
             responsePredictedItems.add(
                     PredictResponseItem.builder()
+                            .id(predictResponse.getId())
+                            .profileImage(predictTargetItem.getProfileImage())
                             .comment(predictTargetItem.getComment())
                             .nickname(predictTargetItem.getNickname())
-                            .id(predictResponse.getId())
                             .commentPredict(predictResponse.getCommentPredicted())
                             .nicknamePredict(predictResponse.getNicknamePredicted())
                             .commentProb(predictResponse.getCommentProb())
@@ -371,33 +375,45 @@ public class YoutubeDataService {
         return responsePredictedItems;
     }
 
-    private Mono<YoutubeComment> generateCommentsResponse(JsonNode rootPath) {
+    // TODO: 현재는 Top Level Comment만 대상으로 하고있다.
+    private Mono<GetCommentsDto.FromGoogle> generateCommentsResponse(JsonNode rootPath) {
         JsonNode pageInfo = rootPath.path("pageInfo");
 
         String nextPageToken = pageInfo.path("nextPageToken").asText("");
 
         ArrayNode items = (ArrayNode) rootPath.path("items");
-        List<YoutubeComment.Comment> comments = new ArrayList<>();
+        List<YoutubeComment> comments = new ArrayList<>();
         items.forEach(item -> {
-            String id = item.path("id").asText();
+            JsonNode parent = item.path("snippet").path("topLevelComment");
+            comments.add(generateYoutubeCommentSnippetValue(parent));
 
-            JsonNode snippet = item.path("snippet").path("topLevelComment").path("snippet");
-            String nickname = snippet.path("authorDisplayName").asText();
-            String comment = snippet.path("textOriginal").asText();
-
-            comments.add(YoutubeComment.Comment.builder()
-                                .id(id)
-                                .nickname(nickname)
-                                .comment(comment)
-                                .build()
-            );
+            JsonNode commentsNode = item.path("replies").path("comments");
+            ArrayNode replies = commentsNode.isArray() ? (ArrayNode) commentsNode : new ObjectMapper().createArrayNode();
+            if (replies.size() <= 5) {
+                for (JsonNode reply : replies) {
+                    comments.add(generateYoutubeCommentSnippetValue(reply));
+                }
+            }
+            else {
+                String parentCommentId = parent.path("id").asText();
+            }
         });
 
-        return Mono.just(YoutubeComment.builder()
+        return Mono.just(GetCommentsDto.FromGoogle.builder()
                                 .comments(comments)
                                 .nextPageToken(nextPageToken)
                                 .build()
         );
+    }
+
+    private YoutubeComment generateYoutubeCommentSnippetValue(JsonNode node) {
+        JsonNode snippet = node.path("snippet");
+        return YoutubeComment.builder()
+                .id(node.path("id").asText())
+                .nickname(snippet.path("authorDisplayName").asText())
+                .comment(snippet.path("textOriginal").asText())
+                .profileImage(snippet.path("authorProfileImageUrl").asText())
+                .build();
     }
 
     private Mono<List<PredictResultItem>> generatePredictResponse(JsonNode rootPath) {
