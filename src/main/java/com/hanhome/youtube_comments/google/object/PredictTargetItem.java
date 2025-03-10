@@ -7,6 +7,7 @@ import lombok.Getter;
 @Getter
 public class PredictTargetItem {
     private String id;
+    private String profileImage;
     private String nickname;
     private String comment;
 }
