@@ -2,10 +2,12 @@ package com.hanhome.youtube_comments.google.object;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.util.List;
 
 @Getter
+@Setter
 @Builder
 public class PredictResponseItem {
     private String id;
@@ -16,4 +18,5 @@ public class PredictResponseItem {
     private String commentPredict;
     private List<Float> nicknameProb;
     private List<Float> commentProb;
+    private Boolean isTopLevel;
 }
