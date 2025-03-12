@@ -40,6 +40,9 @@ public class CustomOauth2SuccessHandler implements AuthenticationSuccessHandler 
     @Value("${data.youtube.access-token}")
     private String redisGoogleAtKey;
 
+    @Value("${spring.app.redirect-url}")
+    private String frontendRedirectUrl;
+
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
         OAuth2AuthenticationToken oauth2Authentication = (OAuth2AuthenticationToken) authentication;
@@ -74,7 +77,7 @@ public class CustomOauth2SuccessHandler implements AuthenticationSuccessHandler 
             Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
             response.addCookie(accessTokenCookie);
 
-            response.sendRedirect("http://localhost:5173/after-login");
+            response.sendRedirect(frontendRedirectUrl + "/after-login");
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

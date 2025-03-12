@@ -7,6 +7,7 @@ import com.hanhome.youtube_comments.oauth.service.CustomOAuth2UserService;
 import com.hanhome.youtube_comments.redis.service.RedisService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -36,6 +37,9 @@ public class SecurityConfig {
     private final CustomOAuth2UserService customOAuth2UserService;
     private final CustomOauth2SuccessHandler customOauth2SuccessHandler;
 
+    @Value("${spring.app.redirect-url}")
+    private String frontendRedirectUrl;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -49,6 +53,7 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(request -> request
                         .requestMatchers(HttpMethod.GET, "/api/member/refresh-token").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/metadata/predict-class").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/youtube/**").authenticated()
                         .anyRequest().permitAll()
                 )
@@ -73,7 +78,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOriginPatterns(List.of("http://localhost:5173", "https://accounts.google.com", "http://127.0.0.1:5173"));
+        configuration.setAllowedOrigins(List.of("https://accounts.google.com", frontendRedirectUrl));
         configuration.setAllowedMethods(List.of("GET","POST","PUT","DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
