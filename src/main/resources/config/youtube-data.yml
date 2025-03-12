@@ -1,7 +1,7 @@
 data:
   youtube:
     api-key: ${GCP_API_KEY}
-    access-token: ${GOOGLE_ACCESS_TOKEN}
+    access-token: ${REDIS_GOOGLE_ACCESS_TOKEN}
 
   predict-server:
     scheme: ${PREDICT_SERVER_SCHEME}
