@@ -13,4 +13,9 @@ public class YoutubeVideo {
     private String thumbnail;
     private LocalDateTime publishedAt;
     private String description;
+    private String privacy;
+
+    public void setPrivacy(String privacy) {
+        this.privacy = privacy;
+    }
 }
