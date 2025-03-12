@@ -126,24 +126,49 @@ public class YoutubeDataService {
         String playlistId = member.getPlaylistId();
         String googleAccessToken = getGoogleAccessToken(uuid);
 
-        Map<String, Object> queries = generateDefaultQueries();
-        queries.put("part", "snippet");
-        queries.put("playlistId", playlistId);
+        Map<String, Object> getVideoQuery = generateDefaultQueries();
+
+        getVideoQuery.put("part", "snippet");
+        getVideoQuery.put("playlistId", playlistId);
 
         int maxResult = request.getTake() == null ? VIDEO_MAX_RESULT : request.getTake();
-        queries.put("maxResults", maxResult);
+        getVideoQuery.put("maxResults", maxResult);
 
         if (request.getPage() != 1) {
-            putNextPageTokenQuery(queries, VIDEO_REDIS_KEY, uuid);
+            putNextPageTokenQuery(getVideoQuery, VIDEO_REDIS_KEY, uuid);
         }
 
         GetVideosDto.FromGoogle fromGoogle = webClient.get()
-                .uri(uriBuilder -> generateUri(uriBuilder, queries, "playlistItems"))
+                .uri(uriBuilder -> generateUri(uriBuilder, getVideoQuery, "playlistItems"))
                 .headers(headers -> setCommonHeader(headers, googleAccessToken))
                 .retrieve()
                 .bodyToMono(JsonNode.class)
                 .flatMap((rootNode) -> generateVideosResponse(rootNode, false))
                 .block();
+
+        Map<String, Object> getVideoInfoQuery = generateDefaultQueries();
+        String videoIdsQuery = fromGoogle.getVideoResources().stream().map(YoutubeVideo::getId).collect(Collectors.joining(","));
+        getVideoInfoQuery.put("part", "snippet,status");
+        getVideoInfoQuery.put("id", videoIdsQuery);
+        getVideoInfoQuery.put("maxResults", maxResult);
+
+        Map<String, String> videoShowScope = webClient.get()
+                .uri(uriBuilder -> generateUri(uriBuilder, getVideoInfoQuery, "videos"))
+                .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .map(rootNode ->
+                            StreamSupport.stream(rootNode.path("items").spliterator(), false)
+                                    .collect(Collectors.toMap(
+                                            item -> item.get("id").asText(),
+                                            item -> item.get("status").path("privacyStatus").asText()
+                            ))
+                )
+                .block();
+
+        fromGoogle.getVideoResources().forEach(videoResource -> {
+            videoResource.setPrivacy(videoShowScope.getOrDefault(videoResource.getId(), "public"));
+        });
 
         if (!"".equals(fromGoogle.getNextPageToken())) {
             redisService.save(VIDEO_REDIS_KEY + ":" + uuid, fromGoogle.getNextPageToken(), 30, TimeUnit.MINUTES);
