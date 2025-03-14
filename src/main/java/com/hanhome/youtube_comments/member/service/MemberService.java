@@ -1,6 +1,8 @@
 package com.hanhome.youtube_comments.member.service;
 
+import com.hanhome.youtube_comments.google.service.RenewGoogleTokenService;
 import com.hanhome.youtube_comments.google.service.YoutubeDataService;
+import com.hanhome.youtube_comments.member.dto.AccessTokenDto;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
 import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.object.YoutubeAccountDetail;
@@ -13,9 +15,11 @@ import com.hanhome.youtube_comments.utils.AESUtil;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.apache.coyote.BadRequestException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -28,10 +32,16 @@ public class MemberService {
     private final RedisService redisService;
     private final YoutubeDataService youtubeDataService;
     private final AESUtil aesUtil;
+    private final RenewGoogleTokenService googleTokenService;
+
+    @Value("${data.youtube.access-token}")
+    private String redisGoogleAtKey;
 
     @Transactional
     public Member upsert(OAuth2User oauth2User, String googleAccessToken, String googleRefreshToken) throws Exception {
         String email = oauth2User.getAttribute("email");
+        String profileImage = oauth2User.getAttribute("picture");
+        String nickname = oauth2User.getAttribute("name");
 
         Member member = memberRepository.findByEmail(email)
                 .orElseGet(() -> {
@@ -44,6 +54,8 @@ public class MemberService {
                 });
         String encryptedGoogleRefreshToken = aesUtil.encrypt(googleRefreshToken);
         member.setGoogleRefreshToken(encryptedGoogleRefreshToken);
+        member.setNickname(nickname);
+        member.setProfileImage(profileImage);
 
         return memberRepository.save(member);
     }
@@ -61,10 +73,14 @@ public class MemberService {
             redisService.save("REFRESH:" + uuid.toString(), refreshToken, ttl, timeUnit);
         }
 
-        return new RefreshTokenDto(refreshToken);
+        return RefreshTokenDto.builder()
+                .refreshToken(refreshToken)
+                .nickname(member.getNickname())
+                .profileImage(member.getProfileImage())
+                .build();
     }
 
-    public CustomTokenRecord renewAccessToken(RenewAccessTokenDto renewDto) throws BadRequestException {
+    public AccessTokenDto.Renew renewAccessToken(RenewAccessTokenDto renewDto) throws BadRequestException {
         String refreshToken = renewDto.getRefreshToken();
 
         try {
@@ -72,7 +88,11 @@ public class MemberService {
 
             String uuid = claims.getSubject();
             Member member = memberRepository.findById(UUID.fromString(uuid)).orElse(null);
-            return tokenProvider.createAccessToken(member.getId(), member.getEmail());
+            return AccessTokenDto.Renew.builder()
+                    .customTokenRecord(tokenProvider.createAccessToken(member.getId(), member.getEmail()))
+                    .nickname(member.getNickname())
+                    .profileImage(member.getProfileImage())
+                    .build();
         } catch (Exception e) {
             throw new BadRequestException("유효하지 않은 refreshToken입니다.");
         }
@@ -82,8 +102,19 @@ public class MemberService {
         redisService.searchNRemove(uuid.toString(), false);
     }
 
-    public void withdraw(UUID uuid) {
+    public void withdraw(UUID uuid) throws Exception {
+        String googleAccessToken = getGoogleAccessToken(uuid);
+        String revokeUrl = "https://oauth2.googleapis.com/revoke?token=" + googleAccessToken;
+        RestTemplate restTemplate = new RestTemplate();
+
+        restTemplate.postForObject(revokeUrl, null, String.class);
+
         memberRepository.deleteById(uuid);
         redisService.searchNRemove(uuid.toString(), false);
+    }
+
+    private String getGoogleAccessToken(UUID uuid) throws Exception {
+        String googleAccessToken = (String) redisService.get(redisGoogleAtKey + ":" + uuid);
+        return googleAccessToken == null ? googleTokenService.renewAccessToken(uuid) : googleAccessToken;
     }
 }
