@@ -24,12 +24,11 @@ public class Member {
     private String refreshToken;
     private String channelId;
     private String playlistId;
+    private String profileImage;
+    private String nickname;
 
-    public void setRefreshToken(String refreshToken) {
-        this.refreshToken = refreshToken;
-    }
-
-    public void setGoogleRefreshToken(String refreshToken) {
-        this.googleRefreshToken = refreshToken;
-    }
+    public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
+    public void setGoogleRefreshToken(String refreshToken) { this.googleRefreshToken = refreshToken; }
+    public void setProfileImage(String profileImage) { this.profileImage = profileImage; }
+    public void setNickname(String nickname) { this.nickname = nickname; }
 }
