@@ -1,10 +1,12 @@
 package com.hanhome.youtube_comments.member.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Getter;
 
-@Data
-@AllArgsConstructor
+@Builder
+@Getter
 public class RefreshTokenDto {
     private String refreshToken;
+    private String profileImage;
+    private String nickname;
 }
