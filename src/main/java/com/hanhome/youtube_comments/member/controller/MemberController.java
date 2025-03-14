@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.member.controller;
 
+import com.hanhome.youtube_comments.member.dto.AccessTokenDto;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
 import com.hanhome.youtube_comments.member.service.MemberService;
 import com.hanhome.youtube_comments.oauth.dto.CustomTokenRecord;
@@ -37,15 +38,21 @@ public class MemberController {
     }
 
     @PostMapping("/renew-token")
-    public ResponseEntity<Void> renewToken(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) throws Exception {
-        CustomTokenRecord customToken = memberService.renewAccessToken(refreshDto);
+    public ResponseEntity<AccessTokenDto.Response> renewToken(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) throws Exception {
+        AccessTokenDto.Renew renewedAccessToken  = memberService.renewAccessToken(refreshDto);
+        CustomTokenRecord customToken = renewedAccessToken.getCustomTokenRecord();
         String token = customToken.token();
         long ttl = customToken.ttl();
         TimeUnit timeUnit = customToken.timeUnit();
 
         Cookie tokenCookie = cookieService.getAccessTokenCookie(token, ((int) timeUnit.toSeconds(ttl)));
         response.addCookie(tokenCookie);
-        return ResponseEntity.noContent().build();
+
+        AccessTokenDto.Response userProfile = AccessTokenDto.Response.builder()
+                .profileImage(renewedAccessToken.getProfileImage())
+                .nickname(renewedAccessToken.getNickname())
+                .build();
+        return ResponseEntity.ok(userProfile);
     }
 
     @PostMapping("/logout")
@@ -60,7 +67,7 @@ public class MemberController {
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> withdraw(HttpServletResponse response) {
+    public ResponseEntity<Void> withdraw(HttpServletResponse response) throws Exception  {
         UUID uuid = uuidFromContext.getUUID();
         memberService.withdraw(uuid);
 
