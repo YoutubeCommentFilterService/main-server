@@ -8,11 +8,11 @@ import java.util.List;
 
 @Getter
 @Setter
-public class PredictedCommentThread {
-    private PredictResponseItem topLevelComment;
-    private List<PredictResponseItem> replies;
+public class CommentThreadPredictionResult {
+    private PredictionResponse topLevelComment;
+    private List<PredictionResponse> replies;
 
-    public PredictedCommentThread() {
+    public CommentThreadPredictionResult() {
         this.topLevelComment = null;
         replies = new ArrayList<>();
     }

@@ -1,6 +1,6 @@
 package com.hanhome.youtube_comments.google.dto;
 
-import com.hanhome.youtube_comments.google.object.PredictResponseItem;
+import com.hanhome.youtube_comments.google.object.PredictionResponse;
 import com.hanhome.youtube_comments.google.object.YoutubeComment;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -26,7 +26,7 @@ public class GetCommentsDto {
     @Setter
     @Builder
     public static class Response {
-        private List<PredictResponseItem> items;
+        private List<PredictionResponse> items;
         private String isLast;
     }
 

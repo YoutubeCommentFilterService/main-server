@@ -7,7 +7,7 @@ import java.util.List;
 
 @Builder
 @Getter
-public class PredictResultItem {
+public class PredictionOutput {
     private String id;
     private String nicknamePredicted;
     private String commentPredicted;

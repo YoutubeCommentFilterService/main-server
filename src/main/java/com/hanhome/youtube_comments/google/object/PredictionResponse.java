@@ -7,9 +7,8 @@ import lombok.Setter;
 import java.util.List;
 
 @Getter
-@Setter
 @Builder
-public class PredictResponseItem {
+public class PredictionResponse {
     private String id;
     private String profileImage;
     private String nickname;
@@ -19,4 +18,8 @@ public class PredictResponseItem {
     private List<Float> nicknameProb;
     private List<Float> commentProb;
     private Boolean isTopLevel;
+
+    public void setIsTopLevel(boolean isTopLevel) {
+        this.isTopLevel = isTopLevel;
+    }
 }

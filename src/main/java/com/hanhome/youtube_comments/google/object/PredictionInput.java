@@ -5,7 +5,7 @@ import lombok.Getter;
 
 @Builder
 @Getter
-public class PredictTargetItem {
+public class PredictionInput {
     private String id;
     private String profileImage;
     private String nickname;
