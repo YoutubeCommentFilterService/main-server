@@ -68,15 +68,19 @@ public class CustomOauth2SuccessHandler implements AuthenticationSuccessHandler 
         try {
             Member member = memberService.upsert(oauthUser, googleAccessToken, googleRefreshToken);
 
-            redisService.save(redisGoogleAtKey + ":" + member.getId().toString(), googleAccessToken, 1, TimeUnit.HOURS);
+            if (member.getIsNewMember()) {
+                Cookie emailCookie = cookieService.getCookie("email", member.getEmail(), (int) 1000 * 60 * 30); // 30분 임시 쿠키
+                response.addCookie(emailCookie);
+            } else {
+                redisService.save(redisGoogleAtKey + ":" + member.getId().toString(), googleAccessToken, 1, TimeUnit.HOURS);
 
-            CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());
-            long ttl = customAccessToken.ttl();
-            TimeUnit timeUnit = customAccessToken.timeUnit();
+                CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());
+                long ttl = customAccessToken.ttl();
+                TimeUnit timeUnit = customAccessToken.timeUnit();
 
-            Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
-            response.addCookie(accessTokenCookie);
-
+                Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
+                response.addCookie(accessTokenCookie);
+            }
             response.sendRedirect(frontendRedirectUrl + "/after-login");
         } catch (Exception e) {
             throw new RuntimeException(e);
