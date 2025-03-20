@@ -1,19 +1,18 @@
 package com.hanhome.youtube_comments.member.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.util.UUID;
 
 @Getter
+@Setter
 @Builder
 @Table(name = "member")
 @Entity
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString
 public class Member {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
@@ -26,9 +25,5 @@ public class Member {
     private String playlistId;
     private String profileImage;
     private String nickname;
-
-    public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
-    public void setGoogleRefreshToken(String refreshToken) { this.googleRefreshToken = refreshToken; }
-    public void setProfileImage(String profileImage) { this.profileImage = profileImage; }
-    public void setNickname(String nickname) { this.nickname = nickname; }
+    private Boolean isNewMember;
 }
