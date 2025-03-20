@@ -1,9 +1,12 @@
 package com.hanhome.youtube_comments.google.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.hanhome.youtube_comments.common.errors.CustomPredictServerException;
+import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
 import com.hanhome.youtube_comments.google.dto.CommentPredictDto;
 import com.hanhome.youtube_comments.google.dto.DeleteCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetCommentsDto;
@@ -15,6 +18,7 @@ import com.hanhome.youtube_comments.redis.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriBuilder;
@@ -35,6 +39,7 @@ public class YoutubeDataService {
     private final RedisService redisService;
     private final RenewGoogleTokenService googleTokenService;
     private final PredictServerProperties predictServerProperties;
+    private final ObjectMapper objectMapper;
 
     private final WebClient webClient = WebClient.create();
     private final static int VIDEO_MAX_RESULT = 50;
@@ -221,15 +226,51 @@ public class YoutubeDataService {
         List<PredictionInput> predictionInputs = fetchPredictTargetComments(queries, uuid, googleAccessToken, VIDEO_COMMENT_REDIS_KEY);
 
         CommentPredictDto.Request predictRequest = CommentPredictDto.Request.builder().items(predictionInputs).build();
-        List<PredictionResponse> predictResponse = predictCommentsRequest(predictRequest, predictionInputs);
+        CommentPredictDto.Response predictResponse = predictCommentsRequest(predictRequest);
 
-        predictResponse = generateHierarchyCommentThread(predictResponse);
+        List<PredictionOutput> predictionOutputs = predictResponse.getResults();
 
-        Object nextToken = redisService.get(VIDEO_COMMENT_REDIS_KEY + ":" + uuid);
-        return GetCommentsDto.Response.builder()
-                .items(predictResponse)
-                .isLast(nextToken == null ? "Y" : "N")
-                .build();
+        if (predictResponse.getPredictCommonResponse().getCode() == 500) {
+            return GetCommentsDto.Response.builder()
+                    .predictCommonResponse(predictResponse.getPredictCommonResponse())
+                    .build();
+        } else {
+            List<PredictionResponse> responsePredictedItems = parsePredictResponseItems(predictionInputs, predictionOutputs);
+            responsePredictedItems = generateHierarchyCommentThread(responsePredictedItems);
+            Object nextToken = redisService.get(VIDEO_COMMENT_REDIS_KEY + ":" + uuid);
+            return GetCommentsDto.Response.builder()
+                    .predictCommonResponse(predictResponse.getPredictCommonResponse())
+                    .items(responsePredictedItems)
+                    .isLast(nextToken == null ? "Y" : "N")
+                    .build();
+        }
+    }
+
+    private List<PredictionResponse> parsePredictResponseItems(List<PredictionInput> predictionInputs,
+                                                               List<PredictionOutput> predictionOutputs) {
+        List<PredictionResponse> responsePredictedItems = new ArrayList<>();
+        for (int i = 0; i < predictionInputs.size(); i++) {
+            PredictionOutput predictionOutput = predictionOutputs.get(i);
+//            if ("정상".equals(predictionOutput.getCommentPredicted())
+//                    && "정상".equals(predictionOutput.getNicknamePredicted())
+//            ) continue;
+
+            PredictionInput predictionInput = predictionInputs.get(i);
+
+            responsePredictedItems.add(
+                    PredictionResponse.builder()
+                            .id(predictionOutput.getId())
+                            .profileImage(predictionInput.getProfileImage())
+                            .comment(predictionInput.getComment())
+                            .nickname(predictionInput.getNickname())
+                            .commentPredict(predictionOutput.getCommentPredicted())
+                            .nicknamePredict(predictionOutput.getNicknamePredicted())
+                            .commentProb(predictionOutput.getCommentProb())
+                            .nicknameProb(predictionOutput.getNicknameProb())
+                            .build()
+            );
+        }
+        return responsePredictedItems;
     }
 
     public void updateModerationAndAuthorBan(DeleteCommentsDto.Request request, UUID uuid) throws Exception {
@@ -443,8 +484,8 @@ public class YoutubeDataService {
                 });
     }
 
-    private List<PredictionResponse> predictCommentsRequest(CommentPredictDto.Request predictRequest, List<PredictionInput> predictionInputs) {
-        CommentPredictDto.Response predictResponse = webClient.post()
+    private CommentPredictDto.Response predictCommentsRequest(CommentPredictDto.Request predictRequest) {
+        return webClient.post()
                 .uri(uriBuilder -> uriBuilder
                         .scheme(predictServerProperties.getScheme())
                         .host(predictServerProperties.getHost())
@@ -454,36 +495,29 @@ public class YoutubeDataService {
                 )
                 .bodyValue(predictRequest)
                 .retrieve()
+                .onStatus(HttpStatusCode::is5xxServerError, response ->
+                        response.bodyToMono(String.class)
+                                .defaultIfEmpty("Server Closed")
+                                .flatMap(errorBody -> {
+                                    JsonNode errorNode;
+                                    try {
+                                        errorNode = objectMapper.readTree(errorBody);
+                                    } catch (Exception e) {
+                                        errorNode = objectMapper.createObjectNode().put("error", errorBody);
+                                    }
+                                    return Mono.error(new CustomPredictServerException("Prediction Server Error", errorNode));
+                                })
+                )
                 .bodyToMono(JsonNode.class)
                 .flatMap(this::generatePredictedResponse)
+                .onErrorResume(CustomPredictServerException.class, ex -> {
+                    PredictCommonResponse predictCommonResponse = PredictCommonResponse.builder().code(500).message(ex.getMessage()).build();
+                    CommentPredictDto.Response res = CommentPredictDto.Response.builder()
+                            .predictCommonResponse(predictCommonResponse)
+                            .build();
+                    return Mono.just(res);
+                })
                 .block();
-
-        List<PredictionOutput> predictionOutputs = predictResponse.getResults();
-
-        List<PredictionResponse> responsePredictedItems = new ArrayList<>();
-        for (int i = 0; i < predictionInputs.size(); i++) {
-            PredictionOutput predictionOutput = predictionOutputs.get(i);
-//            if ("정상".equals(predictionOutput.getCommentPredicted())
-//                    && "정상".equals(predictionOutput.getNicknamePredicted())
-//            ) continue;
-
-            PredictionInput predictionInput = predictionInputs.get(i);
-
-            responsePredictedItems.add(
-                    PredictionResponse.builder()
-                            .id(predictionOutput.getId())
-                            .profileImage(predictionInput.getProfileImage())
-                            .comment(predictionInput.getComment())
-                            .nickname(predictionInput.getNickname())
-                            .commentPredict(predictionOutput.getCommentPredicted())
-                            .nicknamePredict(predictionOutput.getNicknamePredicted())
-                            .commentProb(predictionOutput.getCommentProb())
-                            .nicknameProb(predictionOutput.getNicknameProb())
-                            .build()
-            );
-        }
-
-        return responsePredictedItems;
     }
 
     private List<PredictionResponse> generateHierarchyCommentThread(List<PredictionResponse> items) {
@@ -527,6 +561,7 @@ public class YoutubeDataService {
 
     private Mono<CommentPredictDto.Response> generatePredictedResponse(JsonNode rootPath) {
         ArrayNode predictedItems = (ArrayNode) rootPath.path("items");
+        PredictCommonResponse predictCommonResponse = PredictCommonResponse.builder().code(200).message("조회 성공").build();
         List<PredictionOutput> resultItems = StreamSupport.stream(predictedItems.spliterator(), false)
                         .map(item -> {
                             List<Float> nicknameProb = generateListFromArrayNode((ArrayNode) item.path("nickname_predicted_prob"), node -> (float) node.asDouble());
@@ -540,7 +575,7 @@ public class YoutubeDataService {
                                     .build();
                         }).toList();
 
-        return Mono.just(CommentPredictDto.Response.builder().results(resultItems).build());
+        return Mono.just(CommentPredictDto.Response.builder().predictCommonResponse(predictCommonResponse).results(resultItems).build());
     }
 
     private <T> List<T> generateListFromArrayNode(ArrayNode arrayNode, Function<JsonNode, T> mapper) {
