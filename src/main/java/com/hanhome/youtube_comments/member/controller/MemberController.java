@@ -1,20 +1,20 @@
 package com.hanhome.youtube_comments.member.controller;
 
 import com.hanhome.youtube_comments.member.dto.AccessTokenDto;
+import com.hanhome.youtube_comments.member.dto.IsNewMemberDto;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
+import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.service.MemberService;
 import com.hanhome.youtube_comments.oauth.dto.CustomTokenRecord;
-import com.hanhome.youtube_comments.oauth.dto.CustomUserDetails;
 import com.hanhome.youtube_comments.oauth.dto.RenewAccessTokenDto;
+import com.hanhome.youtube_comments.oauth.provider.JwtTokenProvider;
 import com.hanhome.youtube_comments.oauth.service.CookieService;
 import com.hanhome.youtube_comments.utils.UUIDFromContext;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.apache.coyote.BadRequestException;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +28,77 @@ public class MemberController {
     private final MemberService memberService;
     private final CookieService cookieService;
     private final UUIDFromContext uuidFromContext;
+    private final JwtTokenProvider tokenProvider;
+
+    @GetMapping("/is-new-member")
+    public ResponseEntity<?> getIsNewMember(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            String email = getSpecificCookieVal(cookies, "email");
+            String accessToken = getSpecificCookieVal(cookies, "access_token");
+
+            if (!"".equals(email)) {
+                boolean isNewMember = memberService.checkMemberIsNew(email);
+                IsNewMemberDto.Response responseDto = IsNewMemberDto.Response.builder()
+                        .isNewMember(isNewMember)
+                        .build();
+                return ResponseEntity.ok(responseDto);
+            } else if (!"".equals(accessToken)) {
+                IsNewMemberDto.Response responseDto = IsNewMemberDto.Response.builder()
+                        .isNewMember(false)
+                        .build();
+                return ResponseEntity.ok(responseDto);
+            }
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.badRequest().build();
+    }
+
+    @PostMapping("/confirm-signin")
+    public ResponseEntity<?> confirmSignin(HttpServletRequest request, HttpServletResponse response) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            String email = getAndRemoveSpecificCookie(response, cookies, "email");
+            Member member = memberService.insert(email);
+            if (member != null) {
+                memberService.clearRedisEmailKey(email);
+                CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());
+
+                long ttl = customAccessToken.ttl();
+                TimeUnit timeUnit = customAccessToken.timeUnit();
+
+                Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
+                response.addCookie(accessTokenCookie);
+            }
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/reject-signin")
+    public ResponseEntity<?> rejectSignin(HttpServletRequest request, HttpServletResponse response) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            String email = getAndRemoveSpecificCookie(response, cookies, "email");
+            memberService.clearRedisEmailKey(email);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    private String getSpecificCookieVal(Cookie[] cookies, String cookieKey) {
+        for (Cookie cookie : cookies) {
+            if (cookieKey.equals(cookie.getName())) return cookie.getValue();
+        }
+        return "";
+    }
+
+    private String getAndRemoveSpecificCookie(HttpServletResponse response, Cookie[] cookies, String cookieKey) {
+        String cookieVal = getSpecificCookieVal(cookies, cookieKey);
+        Cookie emailCookie = new Cookie(cookieKey, null);
+        emailCookie.setMaxAge(0);
+        emailCookie.setPath("/");
+        response.addCookie(emailCookie);
+        return cookieVal;
+    }
 
     @GetMapping("/refresh-token")
     public ResponseEntity<RefreshTokenDto> getRefreshToken() {

@@ -37,6 +37,28 @@ public class MemberService {
     @Value("${data.youtube.access-token}")
     private String redisGoogleAtKey;
 
+    private final static String pendingSignupKey = "PENDING_SIGNUP";
+
+    public Boolean checkMemberIsNew(String email) {
+        Object redisVal = redisService.get(pendingSignupKey + ":" + email);
+        return redisVal != null;
+    }
+
+    public void clearRedisEmailKey(String email) {
+        redisService.remove(pendingSignupKey + ":" + email);
+    }
+
+    @Transactional
+    public Member insert(String email) {
+        Member member = (Member) redisService.get(pendingSignupKey + ":" + email);
+        System.out.println(member);
+        if (member != null) {
+            member.setIsNewMember(false);
+            return memberRepository.save(member);
+        }
+        return null;
+    }
+
     @Transactional
     public Member upsert(OAuth2User oauth2User, String googleAccessToken, String googleRefreshToken) throws Exception {
         String email = oauth2User.getAttribute("email");
@@ -50,6 +72,7 @@ public class MemberService {
                             .channelId(detail.getChannelId())
                             .playlistId(detail.getPlaylistId())
                             .email(email)
+                            .isNewMember(true)
                             .build();
                 });
         String encryptedGoogleRefreshToken = aesUtil.encrypt(googleRefreshToken);
@@ -57,7 +80,10 @@ public class MemberService {
         member.setNickname(nickname);
         member.setProfileImage(profileImage);
 
-        return memberRepository.save(member);
+        if (!member.getIsNewMember()) member = memberRepository.save(member);
+        else redisService.save(pendingSignupKey + ":" + email, member, 60 * 5);
+
+        return member;
     }
 
     public RefreshTokenDto getRefreshToken(UUID uuid) {
