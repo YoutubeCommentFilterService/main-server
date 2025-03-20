@@ -13,18 +13,22 @@ spring:
               - profile
               - email
               - https://www.googleapis.com/auth/youtube.force-ssl
-            redirect-uri: https://api.${DEFAULT_DOMAIN}/login/oauth2/code/google
+            redirect-uri: ${REDIRECT_URL_PATH}/login/oauth2/code/google
             authorization-grant-type: authorization_code
             client-name: Google
-          provider:
-            google:
-              authorization-uri: https://account.google.com/o/oauth2/auth
-              token-uri: https://oauth2.googleapis.com/token
-              user-info-url: https://www.googleapis.com/oauth2/v3/userinfo
-              user-name-attribute: sub
+      provider:
+        google:
+          authorization-uri: https://accounts.google.com/o/oauth2/auth
+          token-uri: https://oauth2.googleapis.com/token
+          user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+          user-name-attribute: sub
 
     jwt:
       secret-key: ${JWT_SECRET_KEY}
 
     cipher:
       secret-key: ${CRYPTO_KEY}
+
+data:
+  signin:
+    is-new: ${REDIS_NEW_MEMBER}
