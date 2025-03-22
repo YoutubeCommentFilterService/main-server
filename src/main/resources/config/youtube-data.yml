@@ -4,6 +4,6 @@ data:
     access-token: ${REDIS_GOOGLE_ACCESS_TOKEN}
 
   predict-server:
-    scheme: ${PREDICT_SERVER_SCHEME}
-    host: ${PREDICT_SERVER_HOST}
-    port: ${PREDICT_SERVER_PORT}
+    scheme: ${PREDICT_SERVER_SCHEME:http}
+    host: ${PREDICT_SERVER_HOST:localhost}
+    port: ${PREDICT_SERVER_PORT:5000}

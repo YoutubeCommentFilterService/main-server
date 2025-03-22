@@ -1,7 +1,7 @@
 spring:
   app:
-    redirect-url: ${FRONTEND_REDIRECT_URL}
-    default-domain: ${DEFAULT_DOMAIN}
+    redirect-url: ${FRONTEND_REDIRECT_URL:http://localhost:5173}
+    default-domain: ${DEFAULT_DOMAIN:localhost}
   security:
     oauth2:
       client:
@@ -13,7 +13,7 @@ spring:
               - profile
               - email
               - https://www.googleapis.com/auth/youtube.force-ssl
-            redirect-uri: ${REDIRECT_URL_PATH}/login/oauth2/code/google
+            redirect-uri: ${REDIRECT_URL_PATH:http://localhost:8080}/login/oauth2/code/google
             authorization-grant-type: authorization_code
             client-name: Google
       provider:
@@ -28,7 +28,3 @@ spring:
 
     cipher:
       secret-key: ${CRYPTO_KEY}
-
-data:
-  signin:
-    is-new: ${REDIS_NEW_MEMBER}
