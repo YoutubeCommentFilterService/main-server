@@ -30,8 +30,8 @@ public class MemberController {
     private final UUIDFromContext uuidFromContext;
     private final JwtTokenProvider tokenProvider;
 
-    @GetMapping("/is-new-member")
-    public ResponseEntity<?> getIsNewMember(HttpServletRequest request) {
+    @GetMapping("/check-new")
+    public ResponseEntity<IsNewMemberDto.Response> getIsNewMember(HttpServletRequest request) {
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             String email = getSpecificCookieVal(cookies, "email");
@@ -54,11 +54,13 @@ public class MemberController {
         return ResponseEntity.badRequest().build();
     }
 
-    @PostMapping("/confirm-signin")
-    public ResponseEntity<?> confirmSignin(HttpServletRequest request, HttpServletResponse response) {
+    @PostMapping("/accept-signin")
+    public ResponseEntity<?> acceptSignin(HttpServletRequest request, HttpServletResponse response) {
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             String email = getAndRemoveSpecificCookie(response, cookies, "email");
+            if ("".equals(email)) return ResponseEntity.badRequest().build();
+
             Member member = memberService.insert(email);
             if (member != null) {
                 memberService.clearRedisEmailKey(email);
@@ -69,12 +71,14 @@ public class MemberController {
 
                 Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
                 response.addCookie(accessTokenCookie);
+
+                return ResponseEntity.ok().build();
             }
         }
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.badRequest().build();
     }
 
-    @DeleteMapping("/reject-signin")
+    @PostMapping("/reject-signin")
     public ResponseEntity<?> rejectSignin(HttpServletRequest request, HttpServletResponse response) {
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
@@ -108,8 +112,8 @@ public class MemberController {
         return ResponseEntity.ok(refreshTokenDto);
     }
 
-    @PostMapping("/renew-token")
-    public ResponseEntity<AccessTokenDto.Response> renewToken(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) throws Exception {
+    @PostMapping("/refresh-auth")
+    public ResponseEntity<AccessTokenDto.Response> refreshAuth(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) throws Exception {
         AccessTokenDto.Renew renewedAccessToken  = memberService.renewAccessToken(refreshDto);
         CustomTokenRecord customToken = renewedAccessToken.getCustomTokenRecord();
         String token = customToken.token();
