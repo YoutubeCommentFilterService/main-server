@@ -8,11 +8,15 @@ import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
 import com.hanhome.youtube_comments.google.dto.PredictCategoryDto;
 import com.hanhome.youtube_comments.google.object.PredictServerProperties;
 import lombok.RequiredArgsConstructor;
+import org.apache.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
+import java.net.ConnectException;
+import java.net.SocketException;
 import java.util.List;
 import java.util.stream.StreamSupport;
 
@@ -32,19 +36,6 @@ public class PredictClassService {
                         .path("/predict-category")
                         .build()
                 ).retrieve()
-                .onStatus(HttpStatusCode::is5xxServerError, response ->
-                        response.bodyToMono(String.class)
-                                .defaultIfEmpty("Server Closed")
-                                .flatMap(errorBody -> {
-                                    JsonNode errorNode;
-                                    try {
-                                        errorNode = objectMapper.readTree(errorBody);
-                                    } catch (Exception e) {
-                                        errorNode = objectMapper.createObjectNode().put("error", errorBody);
-                                    }
-                                    return Mono.error(new CustomPredictServerException("Prediction Server Error", errorNode));
-                                })
-                )
                 .bodyToMono(JsonNode.class)
                 .flatMap(node -> {
                     PredictCommonResponse predictCommonResponse = PredictCommonResponse.builder().code(200).message("조회 성공").build();
@@ -64,12 +55,32 @@ public class PredictClassService {
                             .build();
                     return Mono.just(predictCategory);
                 })
-                .onErrorResume(CustomPredictServerException.class, ex -> {
-                    PredictCommonResponse predictCommonResponse = PredictCommonResponse.builder().code(500).message(ex.getMessage()).build();
-                    PredictCategoryDto.Response res = PredictCategoryDto.Response.builder()
+                .onErrorResume(ex -> {
+                    PredictCommonResponse predictCommonResponse;
+                    if (ex instanceof SocketException) {
+                        predictCommonResponse = PredictCommonResponse.builder()
+                                .code(599)
+                                .message("server closed")
+                                .build();
+                    }
+                    else if (ex instanceof WebClientResponseException webClientException) {
+                        HttpStatusCode statusCode = webClientException.getStatusCode();  // 상태 코드
+                        String errorBody = webClientException.getResponseBodyAsString();  // 에러 내용
+                        predictCommonResponse = PredictCommonResponse.builder()
+                                .code(statusCode.value())
+                                .message(errorBody)
+                                .build();
+                    } else {
+                        predictCommonResponse = PredictCommonResponse.builder()
+                                .code(500)
+                                .message("Unexpected Error")
+                                .build();
+                    }
+                    PredictCategoryDto.Response predictCategory = PredictCategoryDto.Response.builder()
                             .predictCommonResponse(predictCommonResponse)
                             .build();
-                    return Mono.just(res);
+
+                    return Mono.just(predictCategory);
                 })
                 .block();
     }

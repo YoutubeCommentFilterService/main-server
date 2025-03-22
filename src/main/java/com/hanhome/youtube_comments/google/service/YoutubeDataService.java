@@ -7,10 +7,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.hanhome.youtube_comments.common.errors.CustomPredictServerException;
 import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
-import com.hanhome.youtube_comments.google.dto.CommentPredictDto;
-import com.hanhome.youtube_comments.google.dto.DeleteCommentsDto;
-import com.hanhome.youtube_comments.google.dto.GetCommentsDto;
-import com.hanhome.youtube_comments.google.dto.GetVideosDto;
+import com.hanhome.youtube_comments.google.dto.*;
 import com.hanhome.youtube_comments.google.object.*;
 import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.object.YoutubeAccountDetail;
@@ -21,10 +18,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriBuilder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.net.SocketException;
 import java.net.URI;
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -495,27 +494,34 @@ public class YoutubeDataService {
                 )
                 .bodyValue(predictRequest)
                 .retrieve()
-                .onStatus(HttpStatusCode::is5xxServerError, response ->
-                        response.bodyToMono(String.class)
-                                .defaultIfEmpty("Server Closed")
-                                .flatMap(errorBody -> {
-                                    JsonNode errorNode;
-                                    try {
-                                        errorNode = objectMapper.readTree(errorBody);
-                                    } catch (Exception e) {
-                                        errorNode = objectMapper.createObjectNode().put("error", errorBody);
-                                    }
-                                    return Mono.error(new CustomPredictServerException("Prediction Server Error", errorNode));
-                                })
-                )
                 .bodyToMono(JsonNode.class)
                 .flatMap(this::generatePredictedResponse)
-                .onErrorResume(CustomPredictServerException.class, ex -> {
-                    PredictCommonResponse predictCommonResponse = PredictCommonResponse.builder().code(500).message(ex.getMessage()).build();
-                    CommentPredictDto.Response res = CommentPredictDto.Response.builder()
+                .onErrorResume(ex -> {
+                    PredictCommonResponse predictCommonResponse;
+                    if (ex instanceof SocketException) {
+                        predictCommonResponse = PredictCommonResponse.builder()
+                                .code(599)
+                                .message("server closed")
+                                .build();
+                    }
+                    else if (ex instanceof WebClientResponseException webClientException) {
+                        HttpStatusCode statusCode = webClientException.getStatusCode();  // 상태 코드
+                        String errorBody = webClientException.getResponseBodyAsString();  // 에러 내용
+                        predictCommonResponse = PredictCommonResponse.builder()
+                                .code(statusCode.value())
+                                .message(errorBody)
+                                .build();
+                    } else {
+                        predictCommonResponse = PredictCommonResponse.builder()
+                                .code(500)
+                                .message("Unexpected Error")
+                                .build();
+                    }
+                    CommentPredictDto.Response predictCategory = CommentPredictDto.Response.builder()
                             .predictCommonResponse(predictCommonResponse)
                             .build();
-                    return Mono.just(res);
+
+                    return Mono.just(predictCategory);
                 })
                 .block();
     }
