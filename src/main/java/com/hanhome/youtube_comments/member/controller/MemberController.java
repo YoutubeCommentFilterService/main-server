@@ -14,6 +14,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +30,9 @@ public class MemberController {
     private final CookieService cookieService;
     private final UUIDFromContext uuidFromContext;
     private final JwtTokenProvider tokenProvider;
+
+    @Value("${spring.app.default-domain}")
+    private String defaultDomain;
 
     @GetMapping("/check-new")
     public ResponseEntity<IsNewMemberDto.Response> getIsNewMember(HttpServletRequest request) {
@@ -98,6 +102,7 @@ public class MemberController {
     private String getAndRemoveSpecificCookie(HttpServletResponse response, Cookie[] cookies, String cookieKey) {
         String cookieVal = getSpecificCookieVal(cookies, cookieKey);
         Cookie emailCookie = new Cookie(cookieKey, null);
+        emailCookie.setDomain(defaultDomain);
         emailCookie.setMaxAge(0);
         emailCookie.setPath("/");
         response.addCookie(emailCookie);
