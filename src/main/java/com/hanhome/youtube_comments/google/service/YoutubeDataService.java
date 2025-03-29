@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.hanhome.youtube_comments.common.errors.CustomPredictServerException;
 import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
 import com.hanhome.youtube_comments.google.dto.*;
+import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
 import com.hanhome.youtube_comments.google.object.*;
 import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.object.YoutubeAccountDetail;
@@ -15,6 +17,7 @@ import com.hanhome.youtube_comments.redis.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -82,7 +85,22 @@ public class YoutubeDataService {
                 .uri(uriBuilder -> generateUri(uriBuilder, queries, "channels"))
                 .headers(headers -> setCommonHeader(headers, googleAccessToken))
                 .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, response -> {
+                    if (response.statusCode() == HttpStatus.FORBIDDEN) {
+                        return response.bodyToMono(String.class)
+                                .flatMap(errBody -> Mono.error(new YoutubeAccessForbiddenException("YouTube 권한 오류: " + errBody)));
+                    }
+                    return response.bodyToMono(String.class)
+                            .flatMap(errBody -> Mono.error(new RuntimeException("비정상적인 오류 발생: " + errBody)));
+                })
                 .bodyToMono(JsonNode.class)
+                .onErrorResume(YoutubeAccessForbiddenException.class, ex -> {
+                    ObjectMapper mapper = new ObjectMapper();
+                    ObjectNode rootNode = mapper.createObjectNode();
+
+                    rootNode.set("items", mapper.createArrayNode());
+                    return Mono.just(rootNode);
+                })
                 .flatMap(this::generateYoutubeChannelDetail)
                 .block();
     }

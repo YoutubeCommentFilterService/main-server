@@ -131,6 +131,7 @@ public class MemberController {
         AccessTokenDto.Response userProfile = AccessTokenDto.Response.builder()
                 .profileImage(renewedAccessToken.getProfileImage())
                 .nickname(renewedAccessToken.getNickname())
+                .hasYoutubeAccess(renewedAccessToken.getHasYoutubeAccess())
                 .build();
         return ResponseEntity.ok(userProfile);
     }

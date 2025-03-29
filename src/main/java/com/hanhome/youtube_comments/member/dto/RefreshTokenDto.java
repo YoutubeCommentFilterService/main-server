@@ -9,4 +9,5 @@ public class RefreshTokenDto {
     private String refreshToken;
     private String profileImage;
     private String nickname;
+    private Boolean hasYoutubeAccess;
 }

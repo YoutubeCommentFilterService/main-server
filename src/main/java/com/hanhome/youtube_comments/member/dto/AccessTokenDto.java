@@ -10,6 +10,7 @@ public class AccessTokenDto {
     public static class Response {
         private String profileImage;
         private String nickname;
+        private Boolean hasYoutubeAccess;
     }
 
     @Builder
@@ -18,5 +19,6 @@ public class AccessTokenDto {
         private CustomTokenRecord customTokenRecord;
         private String profileImage;
         private String nickname;
+        private Boolean hasYoutubeAccess;
     }
 }

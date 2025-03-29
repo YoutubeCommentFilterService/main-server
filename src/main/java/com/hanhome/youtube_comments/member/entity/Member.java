@@ -20,10 +20,20 @@ public class Member {
     private String email;
 
     private String googleRefreshToken;
-    private String refreshToken;
+    private String siteRefreshToken;
     private String channelId;
     private String playlistId;
     private String profileImage;
     private String nickname;
+
+    @Builder.Default
+    @Column(columnDefinition = "boolean default false")
+    private Boolean hasYoutubeAccess = false;
+
     private Boolean isNewMember;
+
+    @PrePersist
+    public void prePersist() {
+        if (channelId == null || channelId.isEmpty()) hasYoutubeAccess = false;
+    }
 }

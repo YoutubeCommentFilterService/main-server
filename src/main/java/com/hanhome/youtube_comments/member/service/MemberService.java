@@ -73,8 +73,15 @@ public class MemberService {
                             .playlistId(detail.getPlaylistId())
                             .email(email)
                             .isNewMember(true)
+                            .hasYoutubeAccess(!"".equals(detail.getChannelId()))
                             .build();
                 });
+        if (!member.getHasYoutubeAccess()) {
+            YoutubeAccountDetail detail = youtubeDataService.getYoutubeAccountDetail(googleAccessToken);
+            member.setChannelId(detail.getChannelId());
+            member.setPlaylistId(detail.getPlaylistId());
+            member.setHasYoutubeAccess(true);
+        }
         String encryptedGoogleRefreshToken = aesUtil.encrypt(googleRefreshToken);
         member.setGoogleRefreshToken(encryptedGoogleRefreshToken);
         member.setNickname(nickname);
@@ -103,6 +110,7 @@ public class MemberService {
                 .refreshToken(refreshToken)
                 .nickname(member.getNickname())
                 .profileImage(member.getProfileImage())
+                .hasYoutubeAccess(member.getHasYoutubeAccess())
                 .build();
     }
 
@@ -118,6 +126,7 @@ public class MemberService {
                     .customTokenRecord(tokenProvider.createAccessToken(member.getId(), member.getEmail()))
                     .nickname(member.getNickname())
                     .profileImage(member.getProfileImage())
+                    .hasYoutubeAccess(member.getHasYoutubeAccess())
                     .build();
         } catch (Exception e) {
             throw new BadRequestException("유효하지 않은 refreshToken입니다.");
@@ -131,12 +140,14 @@ public class MemberService {
     public void withdraw(UUID uuid) throws Exception {
         String googleAccessToken = getGoogleAccessToken(uuid);
         String revokeUrl = "https://oauth2.googleapis.com/revoke?token=" + googleAccessToken;
-        RestTemplate restTemplate = new RestTemplate();
-
-        restTemplate.postForObject(revokeUrl, null, String.class);
+        revokeGoogleOAuth(revokeUrl);
 
         memberRepository.deleteById(uuid);
         redisService.searchNRemove(uuid.toString(), false);
+    }
+
+    public void revokeGoogleOAuth(String revokeUrl) {
+        new RestTemplate().postForObject(revokeUrl, null, String.class);
     }
 
     private String getGoogleAccessToken(UUID uuid) throws Exception {
