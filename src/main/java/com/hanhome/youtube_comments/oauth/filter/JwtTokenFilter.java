@@ -62,7 +62,7 @@ public class JwtTokenFilter extends OncePerRequestFilter {
     }
 
     private boolean shouldSkipFilter(HttpServletRequest request) {
-        String[] publicUrls = {"/api/member/renew-token", "/api/metadata/class",
+        String[] publicUrls = {"/api/metadata/class", "/api/member/refresh-auth",
                 "/api/member/check-new", "/api/member/accept-signin", "/api/member/reject-signin"
         };
         String path = request.getRequestURI();
