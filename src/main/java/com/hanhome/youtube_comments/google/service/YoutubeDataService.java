@@ -294,16 +294,18 @@ public class YoutubeDataService {
         String googleAccessToken = getGoogleAccessToken(uuid);
         Map<String, Object> queries = generateDefaultQueries();
 
+        // 댓글 삭제 - 작성자만 삭제 가능 https://developers.google.com/youtube/v3/guides/implementation/comments?hl=ko#comments-delete
+        // 게시 상태 변경 - 채널 관리자가 관리 가능 https://developers.google.com/youtube/v3/guides/implementation/comments?hl=ko#comments-set-moderation-status
+        queries.put("moderationStatus", "rejected");
+
         // Remove Comment + Author Ban
         if (request.getAuthorBanComments() != null && !request.getAuthorBanComments().isEmpty()) {
             queries.put("id", request.getAuthorBanComments());
-            queries.put("moderationStatus", "rejected");
             queries.put("banAuthor", true);
         }
         // Just Remove Comment
         if (request.getJustDeleteComments() != null && !request.getJustDeleteComments().isEmpty()) {
             queries.put("id", request.getJustDeleteComments());
-            queries.put("moderationStatus", "heldForReview");
         }
         webClient.post()
                 .uri(uriBuilder -> generateUri(uriBuilder, queries, "comments/setModerationStatus"))
