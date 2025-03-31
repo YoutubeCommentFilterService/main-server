@@ -10,6 +10,7 @@ import java.util.List;
 @Builder
 public class PredictionResponse {
     private String id;
+    private String channelId;
     private String profileImage;
     private String nickname;
     private String comment;

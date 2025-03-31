@@ -10,4 +10,5 @@ public class YoutubeComment {
     private String profileImage;
     private String nickname;
     private String comment;
+    private String channelId;
 }

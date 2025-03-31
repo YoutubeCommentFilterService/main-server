@@ -221,6 +221,7 @@ public class YoutubeDataService {
         queries.put("part", "snippet,replies");
         queries.put("allThreadsRelatedToChannelId", channelId);
         queries.put("maxResults", request.getTake() == null ? VIDEO_MAX_RESULT : request.getTake());
+        queries.put("moderationStatus", "published");
         if (request.getPage() != 1) putNextPageTokenQuery(queries, CHANNEL_COMMENT_REDIS_KEY, uuid);
 
         return generateCommentResponseDto(queries, uuid, googleAccessToken, channelId);
@@ -235,24 +236,22 @@ public class YoutubeDataService {
         queries.put("part", "snippet,replies");
         queries.put("videoId", videoId);
         queries.put("maxResults", request.getTake() == null ? COMMENT_MAX_RESULT : request.getTake());
+        queries.put("moderationStatus", "published");
         if (request.getPage() != 1) putNextPageTokenQuery(queries, VIDEO_COMMENT_REDIS_KEY, uuid);
 
         return generateCommentResponseDto(queries, uuid, googleAccessToken, channelId);
     }
 
     private GetCommentsDto.Response generateCommentResponseDto(Map<String, Object> queries, UUID uuid, String googleAccessToken, String channelId) {
-        List<PredictionInput> predictionInputs = fetchPredictTargetComments(queries, uuid, googleAccessToken, channelId, VIDEO_COMMENT_REDIS_KEY);
-
-        CommentPredictDto.Request predictRequest = CommentPredictDto.Request.builder().items(predictionInputs).build();
-        CommentPredictDto.Response predictResponse = predictCommentsRequest(predictRequest);
-
-        List<PredictionOutput> predictionOutputs = predictResponse.getResults();
+        List<YoutubeComment> predictionInputs = fetchPredictTargetComments(queries, uuid, googleAccessToken, channelId, VIDEO_COMMENT_REDIS_KEY);
+        CommentPredictDto.Response predictResponse = predictCommentsRequest(predictionInputs);
 
         if (predictResponse.getPredictCommonResponse().getCode() == 500) {
             return GetCommentsDto.Response.builder()
                     .predictCommonResponse(predictResponse.getPredictCommonResponse())
                     .build();
         } else {
+            List<PredictionOutput> predictionOutputs = predictResponse.getResults();
             List<PredictionResponse> responsePredictedItems = parsePredictResponseItems(predictionInputs, predictionOutputs);
             responsePredictedItems = generateHierarchyCommentThread(responsePredictedItems);
             Object nextToken = redisService.get(VIDEO_COMMENT_REDIS_KEY + ":" + uuid);
@@ -264,7 +263,7 @@ public class YoutubeDataService {
         }
     }
 
-    private List<PredictionResponse> parsePredictResponseItems(List<PredictionInput> predictionInputs,
+    private List<PredictionResponse> parsePredictResponseItems(List<YoutubeComment> predictionInputs,
                                                                List<PredictionOutput> predictionOutputs) {
         List<PredictionResponse> responsePredictedItems = new ArrayList<>();
         for (int i = 0; i < predictionInputs.size(); i++) {
@@ -273,11 +272,12 @@ public class YoutubeDataService {
 //                    && "정상".equals(predictionOutput.getNicknamePredicted())
 //            ) continue;
 
-            PredictionInput predictionInput = predictionInputs.get(i);
+            YoutubeComment predictionInput = predictionInputs.get(i);
 
             responsePredictedItems.add(
                     PredictionResponse.builder()
-                            .id(predictionOutput.getId())
+                            .id(predictionInput.getId())
+                            .channelId(predictionInput.getChannelId())
                             .profileImage(predictionInput.getProfileImage())
                             .comment(predictionInput.getComment())
                             .nickname(predictionInput.getNickname())
@@ -291,29 +291,46 @@ public class YoutubeDataService {
         return responsePredictedItems;
     }
 
-    public void updateModerationAndAuthorBan(DeleteCommentsDto.Request request, UUID uuid) throws Exception {
-        String googleAccessToken = getGoogleAccessToken(uuid);
+    public void updateModerationAndAuthorBan(DeleteCommentsDto.Request request, Member member) throws Exception {
+        String googleAccessToken = getGoogleAccessToken(member.getId());
         Map<String, Object> queries = generateDefaultQueries();
 
         // 댓글 삭제 - 작성자만 삭제 가능 https://developers.google.com/youtube/v3/guides/implementation/comments?hl=ko#comments-delete
         // 게시 상태 변경 - 채널 관리자가 관리 가능 https://developers.google.com/youtube/v3/guides/implementation/comments?hl=ko#comments-set-moderation-status
         queries.put("moderationStatus", "rejected");
 
-        // Remove Comment + Author Ban
-        if (request.getAuthorBanComments() != null && !request.getAuthorBanComments().isEmpty()) {
-            queries.put("id", request.getAuthorBanComments());
-            queries.put("banAuthor", true);
-        }
+        // Remove Comment + Author Ban - 거의 안쓸 예정
+//        if (request.getAuthorBanComments() != null && !request.getAuthorBanComments().isEmpty()) {
+//            queries.put("id", request.getAuthorBanComments());
+//            queries.put("banAuthor", true);
+//        }
         // Just Remove Comment
         if (request.getJustDeleteComments() != null && !request.getJustDeleteComments().isEmpty()) {
-            queries.put("id", request.getJustDeleteComments());
+            String removeCommentQueries = request.getJustDeleteComments().stream()
+                            .map(DeleteCommentObject::getCommentId)
+                            .collect(Collectors.joining(","));
+            queries.put("id", removeCommentQueries);
+            webClient.post()
+                    .uri(uriBuilder -> generateUri(uriBuilder, queries, "comments/setModerationStatus"))
+                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                    .retrieve()
+                    .bodyToMono(Void.class)
+                    .block();
+
+            Flux.fromIterable(request.getJustDeleteComments())
+                    .filter(obj -> member.getChannelId().equals(obj.getChannelId()))
+                    .flatMap(obj -> {
+                            Map<String, Object> query = new HashMap<>();
+                            query.put("id", obj.getCommentId());
+                            return webClient.delete()
+                                    .uri(uriBuilder -> generateUri(uriBuilder, query, "comments"))
+                                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                                    .retrieve()
+                                    .bodyToMono(Void.class);
+                    }, 10)
+                    .collectList()
+                    .block();
         }
-        webClient.post()
-                .uri(uriBuilder -> generateUri(uriBuilder, queries, "comments/setModerationStatus"))
-                .headers(headers -> setCommonHeader(headers, googleAccessToken))
-                .retrieve()
-                .bodyToMono(Void.class)
-                .block();
     }
 
     private Map<String, Object> generateDefaultQueries() {
@@ -379,16 +396,16 @@ public class YoutubeDataService {
         return Mono.just(fromGoogle);
     }
 
-    private List<PredictionInput> fetchPredictTargetComments(Map<String, Object> queries,
+    private List<YoutubeComment> fetchPredictTargetComments(Map<String, Object> queries,
                                                              UUID uuid,
                                                              String googleAccessToken,
                                                              String channelId,
                                                              String redisKey) {
-        List<PredictionInput> predictionInputs = new ArrayList<>();
+        List<YoutubeComment> predictionInputs = new ArrayList<>();
         for (int step = 0; step < STEP; step++) {
             GetCommentsDto.FromGoogle fromGoogle = webClient.get()
                     .uri(uriBuilder -> generateUri(uriBuilder, queries, "commentThreads"))
-                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
+                    .headers(headers -> setCommonHeader(headers, googleAccessToken)) // access token이 없더라도 api key 전달으로 가능!
                     .retrieve()
                     .onStatus(status -> status.is4xxClientError(), response -> Mono.empty())
                     .bodyToMono(JsonNode.class)
@@ -396,16 +413,7 @@ public class YoutubeDataService {
                     .flatMap(node -> generateCommentsResponseFromGoogle(node, googleAccessToken, channelId))
                     .block();
 
-            predictionInputs.addAll(
-                    fromGoogle.getComments().stream().map(comment ->
-                            PredictionInput.builder()
-                                    .profileImage(comment.getProfileImage())
-                                    .id(comment.getId())
-                                    .comment(comment.getComment())
-                                    .nickname(comment.getNickname())
-                                    .build()
-                    ).toList()
-            );
+            predictionInputs.addAll(fromGoogle.getComments());
 
             if (!fromGoogle.getNextPageToken().isEmpty()) {
                 queries.put("pageToken", fromGoogle.getNextPageToken());
@@ -432,16 +440,16 @@ public class YoutubeDataService {
         if (items.isArray()) {
             for (JsonNode item : items) {
                 JsonNode parent = item.path("snippet").path("topLevelComment");
+                int totalReplyCount = item.path("snippet").path("totalReplyCount").asInt();
                 YoutubeComment parentComment = generateYoutubeCommentSnippetValue(parent, channelId);
-                if (parentComment != null) comments.add(parentComment);
+                comments.add(parentComment);
 
                 JsonNode replies = item.path("replies").path("comments");
                 if (replies.isArray()) {
-                    int totalReplyCount = item.path("snippet").path("totalReplyCount").asInt();
                     if (totalReplyCount <= 5) {
                         replies.forEach(reply -> {
                             YoutubeComment childComment =  generateYoutubeCommentSnippetValue(reply, channelId);
-                            if (childComment != null) comments.add(childComment);
+                            comments.add(childComment);
                         });
                     } else {
                         String parentCommentId = parent.path("id").asText();
@@ -471,12 +479,12 @@ public class YoutubeDataService {
 
     private YoutubeComment generateYoutubeCommentSnippetValue(JsonNode node, String channelId) {
         JsonNode snippet = node.path("snippet");
-        if (channelId.equals(snippet.path("authorChannelId").path("value").asText(""))) return null;
         return YoutubeComment.builder()
                 .id(node.path("id").asText())
                 .nickname(snippet.path("authorDisplayName").asText())
                 .comment(snippet.path("textOriginal").asText())
                 .profileImage(snippet.path("authorProfileImageUrl").asText())
+                .channelId(snippet.path("authorChannelId").path("value").asText())
                 .build();
     }
 
@@ -501,7 +509,7 @@ public class YoutubeDataService {
                     if (replies.isArray())
                         for (JsonNode reply : replies) {
                             YoutubeComment childComment = generateYoutubeCommentSnippetValue(reply, channelId);
-                            if (childComment != null) accumulatedReplies.add(childComment);
+                            accumulatedReplies.add(childComment);
                         }
 
                     String nextPageToken = node.path("nextPageToken").asText("");
@@ -513,7 +521,14 @@ public class YoutubeDataService {
                 });
     }
 
-    private CommentPredictDto.Response predictCommentsRequest(CommentPredictDto.Request predictRequest) {
+    private CommentPredictDto.Response predictCommentsRequest(List<YoutubeComment> youtubeComments) {
+        List<PredictionInput> predictionInputs = youtubeComments.stream().map(comment ->
+                PredictionInput.builder()
+                        .nickname(comment.getNickname())
+                        .comment(comment.getComment())
+                        .build()
+        ).toList();
+        CommentPredictDto.Request predictionRequest = CommentPredictDto.Request.builder().items(predictionInputs).build();
         return webClient.post()
                 .uri(uriBuilder -> uriBuilder
                         .scheme(predictServerProperties.getScheme())
@@ -522,7 +537,7 @@ public class YoutubeDataService {
                         .path("/predict")
                         .build()
                 )
-                .bodyValue(predictRequest)
+                .bodyValue(predictionRequest)
                 .retrieve()
                 .bodyToMono(JsonNode.class)
                 .flatMap(this::generatePredictedResponse)
@@ -603,7 +618,6 @@ public class YoutubeDataService {
                             List<Float> nicknameProb = generateListFromArrayNode((ArrayNode) item.path("nickname_predicted_prob"), node -> (float) node.asDouble());
                             List<Float> commentProb = generateListFromArrayNode((ArrayNode) item.path("comment_predicted_prob"), node -> (float) node.asDouble());
                             return PredictionOutput.builder()
-                                    .id(item.get("id").asText())
                                     .commentPredicted(item.get("comment_predicted").asText())
                                     .nicknamePredicted(item.get("nickname_predicted").asText())
                                     .commentProb(commentProb)

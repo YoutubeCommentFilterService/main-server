@@ -1,18 +1,14 @@
 package com.hanhome.youtube_comments.google.dto;
 
+import com.hanhome.youtube_comments.google.object.DeleteCommentObject;
 import lombok.Data;
-import org.springframework.lang.Nullable;
+
+import java.util.List;
 
 public class DeleteCommentsDto {
     @Data
     public static class Request {
-        /**
-         * 각 field는 comma로 구분된 id 조합
-         */
-        @Nullable
-        private String authorBanComments;
-
-        @Nullable
-        private String justDeleteComments;
+        private List<DeleteCommentObject> authorBanComments;
+        private List<DeleteCommentObject> justDeleteComments;
     }
 }
