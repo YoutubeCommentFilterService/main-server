@@ -8,6 +8,7 @@ import java.util.List;
 public class DeleteCommentsDto {
     @Data
     public static class Request {
+        private String videoId;
         private List<DeleteCommentObject> authorBanComments;
         private List<DeleteCommentObject> justDeleteComments;
     }

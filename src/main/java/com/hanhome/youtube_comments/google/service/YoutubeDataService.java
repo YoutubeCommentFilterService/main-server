@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.hanhome.youtube_comments.common.errors.CustomPredictServerException;
 import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
 import com.hanhome.youtube_comments.google.dto.*;
 import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
@@ -26,9 +25,16 @@ import org.springframework.web.util.UriBuilder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.net.SocketException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -170,7 +176,17 @@ public class YoutubeDataService {
                 .uri(uriBuilder -> generateUri(uriBuilder, getVideoQuery, "playlistItems"))
                 .headers(headers -> setCommonHeader(headers, googleAccessToken))
                 .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, clientResponse -> {
+                    return clientResponse.bodyToMono(String.class)
+                            .flatMap(errorBody -> {
+                                System.err.println("Error Response: " + errorBody);
+                                return Mono.error(new RuntimeException("API Error: " + errorBody));
+                            });
+                })
                 .bodyToMono(JsonNode.class)
+                .doOnError(error -> {
+                    System.out.println("Exception occurred: " + error.getMessage());
+                })
                 .flatMap((rootNode) -> generateVideosResponse(rootNode, false))
                 .block();
 
@@ -254,6 +270,10 @@ public class YoutubeDataService {
             List<PredictionOutput> predictionOutputs = predictResponse.getResults();
             List<PredictionResponse> responsePredictedItems = parsePredictResponseItems(predictionInputs, predictionOutputs);
             responsePredictedItems = generateHierarchyCommentThread(responsePredictedItems);
+            if (queries.get("videoId") != null) {
+                String videoId = (String) queries.get("videoId");
+                savePredictedResult(videoId, responsePredictedItems);
+            }
             Object nextToken = redisService.get(VIDEO_COMMENT_REDIS_KEY + ":" + uuid);
             return GetCommentsDto.Response.builder()
                     .predictCommonResponse(predictResponse.getPredictCommonResponse())
@@ -268,9 +288,9 @@ public class YoutubeDataService {
         List<PredictionResponse> responsePredictedItems = new ArrayList<>();
         for (int i = 0; i < predictionInputs.size(); i++) {
             PredictionOutput predictionOutput = predictionOutputs.get(i);
-//            if ("정상".equals(predictionOutput.getCommentPredicted())
-//                    && "정상".equals(predictionOutput.getNicknamePredicted())
-//            ) continue;
+            if ("정상".equals(predictionOutput.getCommentPredicted())
+                    && "정상".equals(predictionOutput.getNicknamePredicted())
+            ) continue;
 
             YoutubeComment predictionInput = predictionInputs.get(i);
 
@@ -306,6 +326,7 @@ public class YoutubeDataService {
 //        }
         // Just Remove Comment
         if (request.getJustDeleteComments() != null && !request.getJustDeleteComments().isEmpty()) {
+            saveUserDeleteRequest(request.getVideoId(), request.getJustDeleteComments());
             String removeCommentQueries = request.getJustDeleteComments().stream()
                             .map(DeleteCommentObject::getCommentId)
                             .collect(Collectors.joining(","));
@@ -646,4 +667,57 @@ public class YoutubeDataService {
         headers.add("Authorization", "Bearer " + googleAccessToken);
         headers.add("Accept", "application/json");
     }
+
+    private void savePredictedResult(String id, List<PredictionResponse> responsePredictedItems) {
+        if (!responsePredictedItems.isEmpty()) {
+            String filePath = generateFilePath(id, "predict");
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath, true))) {
+                for (SavingPrediction item : responsePredictedItems) {
+                    String formattedData = predictionFormatData(item);
+                    writer.write(formattedData);
+                    writer.newLine();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void saveUserDeleteRequest(String id, List<DeleteCommentObject> justDeleteComments) {
+        if (!justDeleteComments.isEmpty()) {
+            String filePath = generateFilePath(id, "request");
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath, true))) {
+                for (DeleteCommentObject item : justDeleteComments) {
+                    String formattedData = item.getCommentId();
+                    writer.write(formattedData);
+                    writer.newLine();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private String generateFilePath(String id, String type) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss");
+        String formattedDate = ZonedDateTime.now().format(formatter);
+        Path dirPath = Paths.get("tmp", "result", id);
+        if (!Files.exists(dirPath)) {
+            try {
+                Files.createDirectories(dirPath);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return dirPath.resolve(type + "-" + formattedDate + ".txt").toString();
+    }
+
+    private String predictionFormatData(SavingPrediction item) {
+        return String.format("%s - %s\n\t%s\n\t%s\n\t%s\n\t%s",
+                item.getId(), item.getProfileImage(),
+                item.getNickname(), item.getNicknameProb().toString(),
+                item.getComment(), item.getCommentProb().toString()
+        );
+    }
+
 }
