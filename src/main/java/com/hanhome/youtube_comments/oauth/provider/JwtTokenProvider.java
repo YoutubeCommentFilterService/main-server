@@ -22,7 +22,7 @@ public class JwtTokenProvider {
     private final long refreshInMilliSec = accessInMillisec * 24 * 7; // 7 days
 
     public CustomTokenRecord createAccessToken(UUID uid, String email) {
-        Date now = new Date();
+        long now = System.currentTimeMillis();
         Key key = Keys.hmacShaKeyFor(secretKey.getBytes());
 
         Map<String, Object> claims = new HashMap<>();
@@ -31,8 +31,8 @@ public class JwtTokenProvider {
         String token = Jwts.builder()
                 .setSubject(uid.toString())
                 .addClaims(claims)
-                .setIssuedAt(now)
-                .setExpiration(new Date(now.getTime() + accessInMillisec))
+                .setIssuedAt(new Date(now))
+                .setExpiration(new Date(now + accessInMillisec))
                 .signWith(key)
                 .compact();
 
@@ -40,13 +40,13 @@ public class JwtTokenProvider {
     }
 
     public CustomTokenRecord createRefreshToken(UUID uid) {
-        Date now = new Date();
+        long now = System.currentTimeMillis();
         Key key = Keys.hmacShaKeyFor(secretKey.getBytes());
 
         String token = Jwts.builder()
                 .setSubject(uid.toString())
-                .setIssuedAt(now)
-                .setExpiration(new Date(now.getTime() + refreshInMilliSec))
+                .setIssuedAt(new Date(now))
+                .setExpiration(new Date(now + refreshInMilliSec))
                 .signWith(key)
                 .compact();
 
