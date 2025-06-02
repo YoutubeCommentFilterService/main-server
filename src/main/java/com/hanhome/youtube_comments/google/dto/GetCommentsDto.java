@@ -1,8 +1,7 @@
 package com.hanhome.youtube_comments.google.dto;
 
 import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
-import com.hanhome.youtube_comments.google.object.PredictionResponse;
-import com.hanhome.youtube_comments.google.object.YoutubeComment;
+import com.hanhome.youtube_comments.google.object.predict.PredictionCombinedResource;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.*;
@@ -28,14 +27,7 @@ public class GetCommentsDto {
     @Builder
     public static class Response {
         private PredictCommonResponse predictCommonResponse;
-        private List<PredictionResponse> items;
+        private List<PredictionCombinedResource> items;
         private String isLast;
-    }
-
-    @Getter
-    @Builder
-    public static class FromGoogle {
-        private String nextPageToken;
-        private List<YoutubeComment> comments;
     }
 }

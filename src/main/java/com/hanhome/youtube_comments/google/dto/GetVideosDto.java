@@ -28,13 +28,4 @@ public class GetVideosDto {
         private List<YoutubeVideo> items;
         private String isLast;
     }
-
-    @Getter
-    @Setter
-    @Builder
-    public static class FromGoogle {
-        private Boolean isLast;
-        private String nextPageToken;
-        private List<YoutubeVideo> videoResources;
-    }
 }

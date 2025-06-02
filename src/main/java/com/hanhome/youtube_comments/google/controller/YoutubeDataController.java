@@ -30,14 +30,6 @@ public class YoutubeDataController {
         return ResponseEntity.ok(commentService.getVideosByPlaylist(requestDto, member));
     }
 
-    @GetMapping("/comments/by-channel")
-    public ResponseEntity<GetCommentsDto.Response> getCommentByChannelId(
-            @Valid @ModelAttribute GetCommentsDto.Request requestDto
-    ) throws Exception {
-        Member member = uuidFromContext.getMember();
-        return ResponseEntity.ok(commentService.getCommentsByChannelId(requestDto, member));
-    }
-
     @GetMapping("/videos/{videoId}")
     public ResponseEntity<GetCommentsDto.Response> getCommentsByVideoId(
             @Valid @ModelAttribute GetCommentsDto.Request requestDto,
