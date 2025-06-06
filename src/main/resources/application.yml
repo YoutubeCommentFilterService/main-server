@@ -8,3 +8,8 @@ spring:
       - "classpath:/config/redis.yml"
       - "classpath:/config/security.yml"
       - "classpath:/config/youtube-data.yml"
+      - "classpath:/config/mongo.yml"
+
+logging:
+  level:
+    org.springframework.data.mongodb.core.index: DEBUG

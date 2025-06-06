@@ -58,6 +58,7 @@ public class YoutubeDataService {
     private final RenewGoogleTokenService googleTokenService;
     private final PredictServerProperties predictServerProperties;
     private final ObjectMapper objectMapper;
+    private final LoggingPredictedService loggingPredictedService;
 
     private final WebClient webClient = WebClient.create();
     private final static int COMMENT_THREAD_MAX_REPLY = 5;
@@ -235,7 +236,8 @@ public class YoutubeDataService {
                 )
                 .toList();
 
-        savePredictedResult(videoId, predictResults);
+        loggingPredictedService.savePredictLogging(videoId, predictResults);
+//        savePredictedResult(videoId, predictResults);
 
         return GetCommentsDto.Response.builder()
                 .predictCommonResponse(PredictCommonResponse.builder().code(200).message("success").build())
@@ -373,13 +375,15 @@ public class YoutubeDataService {
 
         // Just Remove Comment
         if (request.getJustDeleteComments() != null && !request.getJustDeleteComments().isEmpty()) {
+            String videoId = request.getVideoId();
             List<DeleteCommentObject> targetDeleteComments = request.getJustDeleteComments().stream()
                     .filter(deleteComment -> !member.getChannelId().equals(deleteComment.getChannelId()))
                     .toList();
 
             if (targetDeleteComments.isEmpty()) return;
 
-            saveUserDeleteRequest(request.getVideoId(), targetDeleteComments);
+            loggingPredictedService.saveDeletedLogging(videoId, targetDeleteComments);
+//            saveUserDeleteRequest(videoId, targetDeleteComments);
 
             String removeCommentQueries = targetDeleteComments.stream()
                     .map(DeleteCommentObject::getCommentId)
