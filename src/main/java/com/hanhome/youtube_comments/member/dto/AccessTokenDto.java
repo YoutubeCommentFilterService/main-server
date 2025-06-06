@@ -11,6 +11,7 @@ public class AccessTokenDto {
         private String profileImage;
         private String nickname;
         private Boolean hasYoutubeAccess;
+        private String role;
     }
 
     @Builder
@@ -20,5 +21,6 @@ public class AccessTokenDto {
         private String profileImage;
         private String nickname;
         private Boolean hasYoutubeAccess;
+        private String role;
     }
 }

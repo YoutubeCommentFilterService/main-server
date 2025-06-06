@@ -132,6 +132,7 @@ public class MemberController {
                 .profileImage(renewedAccessToken.getProfileImage())
                 .nickname(renewedAccessToken.getNickname())
                 .hasYoutubeAccess(renewedAccessToken.getHasYoutubeAccess())
+                .role(renewedAccessToken.getRole())
                 .build();
         return ResponseEntity.ok(userProfile);
     }

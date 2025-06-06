@@ -127,6 +127,7 @@ public class MemberService {
                     .nickname(member.getNickname())
                     .profileImage(member.getProfileImage())
                     .hasYoutubeAccess(member.getHasYoutubeAccess())
+                    .role(member.getRole().name())
                     .build();
         } catch (Exception e) {
             throw new BadRequestException("유효하지 않은 refreshToken입니다.");

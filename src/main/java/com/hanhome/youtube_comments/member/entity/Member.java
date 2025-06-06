@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.member.entity;
 
+import com.hanhome.youtube_comments.member.object.MemberRole;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -25,6 +26,11 @@ public class Member {
     private String playlistId;
     private String profileImage;
     private String nickname;
+
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false, length = 10)
+    private MemberRole role = MemberRole.USER;
 
     @Builder.Default
     @Column(columnDefinition = "boolean default false")
