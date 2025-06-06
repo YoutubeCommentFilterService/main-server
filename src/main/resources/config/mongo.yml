@@ -1,0 +1,5 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://${MONGODB_UNAME:root}:${MONGODB_PW:root}@${MONGODB_HOST:localhost}:${MONGODB_PORT:27017}/${MONGODB_DB:youtube-comments}?authSource=admin
+      auto-index-creation: true
