@@ -8,4 +8,7 @@ import lombok.Getter;
 public class YoutubeAccountDetail {
     private String channelId;
     private String playlistId;
+    private String channelName;
+    private String channelHandler;
+    private String thumbnailUrl;
 }

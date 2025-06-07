@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.NullNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
 import com.hanhome.youtube_comments.google.dto.*;
 import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
@@ -14,6 +13,10 @@ import com.hanhome.youtube_comments.google.object.predict.PredictionCombinedReso
 import com.hanhome.youtube_comments.google.object.predict.PredictionResponse;
 import com.hanhome.youtube_comments.google.object.predict.PredictionResultResource;
 import com.hanhome.youtube_comments.google.object.predict.PredictionInputResource;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.channel.ChannelContentDetailsResource;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.channel.ChannelListResponse;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.channel.ChannelResource;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.channel.ChannelSnippetResource;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.comment.CommentListResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.comment.CommentResource;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.comment.CommentSnippetResource;
@@ -67,6 +70,8 @@ public class YoutubeDataService {
     private final static String VIDEO_REDIS_KEY = "NEXT_VIDEO";
     private final static String VIDEO_COMMENT_REDIS_KEY = "NEXT_COMMENT_V";
 
+    private final String YOUTUBE_SCOPE = "youtube.force-ssl";
+
     @Value("${data.youtube.api-key}")
     private String apiKey;
 
@@ -94,7 +99,7 @@ public class YoutubeDataService {
 
     public YoutubeAccountDetail getYoutubeAccountDetail(String googleAccessToken) {
         Map<String, Object> queries = generateDefaultQueries();
-        queries.put("part", "id,contentDetails");
+        queries.put("part", "snippet,contentDetails");
         queries.put("mine", true);
 
         return webClient.get()
@@ -109,16 +114,23 @@ public class YoutubeDataService {
                     return response.bodyToMono(String.class)
                             .flatMap(errBody -> Mono.error(new RuntimeException("비정상적인 오류 발생: " + errBody)));
                 })
-                .bodyToMono(JsonNode.class)
-                .onErrorResume(YoutubeAccessForbiddenException.class, ex -> {
-                    ObjectMapper mapper = new ObjectMapper();
-                    ObjectNode rootNode = mapper.createObjectNode();
-
-                    rootNode.set("items", mapper.createArrayNode());
-                    return Mono.just(rootNode);
-                })
+                .bodyToMono(ChannelListResponse.class)
                 .flatMap(this::generateYoutubeChannelDetail)
                 .block();
+    }
+
+    private Mono<YoutubeAccountDetail> generateYoutubeChannelDetail(ChannelListResponse channelListResponse) {
+        ChannelResource channelResource = channelListResponse.getItems().get(0);
+        ChannelSnippetResource channelSnippetResource = channelResource.getSnippet();
+        ChannelContentDetailsResource channelContentDetailsResource = channelResource.getContentDetails();
+
+        return Mono.just(YoutubeAccountDetail.builder()
+                .channelId(channelResource.getId())
+                .playlistId(channelContentDetailsResource.getRelatedPlaylists().getUploads())
+                .channelHandler(channelSnippetResource.getCustomUrl())
+                .channelName(channelSnippetResource.getTitle())
+                .thumbnailUrl(channelSnippetResource.getThumbnails().getMedium().getUrl())
+                .build());
     }
 
     private Mono<YoutubeAccountDetail> generateYoutubeChannelDetail(JsonNode rootNode) {
@@ -138,7 +150,7 @@ public class YoutubeDataService {
         String playlistId = member.getPlaylistId();
         String googleAccessToken = getGoogleAccessToken(uuid);
 
-        if (playlistId.isEmpty()) return GetVideosDto.Response.builder()
+        if (playlistId == null || playlistId.isEmpty()) return GetVideosDto.Response.builder()
                 .isLast("Y")
                 .items(new ArrayList<>())
                 .build();
@@ -264,6 +276,7 @@ public class YoutubeDataService {
                 .toList();
         CommentPredictDto.Request predictionRequest = CommentPredictDto.Request.builder().items(predictionInputResources).build();
 
+        // TODO: 추론 서버가 꺼져있는 경우 빈 배열로 처리 또는 Exception 던져서 에러 처리
         PredictionResponse predictionResponse = webClient.post()
                 .uri( uriBuilder -> uriBuilder
                         .scheme(predictServerProperties.getScheme())
@@ -486,7 +499,30 @@ public class YoutubeDataService {
         );
     }
 
-    private void printObjectPretty(Object obj) throws JsonProcessingException {
-        System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(obj));
+    private void printObjectPretty(Object obj) {
+        try {
+            System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(obj));
+        } catch (JsonProcessingException e) {
+            System.out.println("Runtime Error!");
+        }
+    }
+
+    public boolean hasYoutubeAccess(String googleAccessToken) {
+        return Boolean.TRUE.equals(webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .scheme("https")
+                        .host("www.googleapis.com")
+                        .path("/oauth2/v1/tokeninfo")
+                        .queryParam("access_token", googleAccessToken)
+                        .build()
+                )
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .flatMap(jsonNode -> {
+                    String[] scopes = jsonNode.get("scope").asText().split(" ");
+                    boolean result = Arrays.stream(scopes).anyMatch(s -> s.endsWith(YOUTUBE_SCOPE));
+                    return Mono.just(result);
+                })
+                .block());
     }
 }
