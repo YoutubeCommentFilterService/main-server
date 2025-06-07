@@ -1,15 +1,19 @@
 package com.hanhome.youtube_comments.member.entity;
 
 import com.hanhome.youtube_comments.member.object.MemberRole;
+import com.hanhome.youtube_comments.member.object.SimpleMemberInfo;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
 @Setter
 @Builder
-@Table(name = "member")
+@Table(name = "member", indexes = {
+        @Index(name = "idx_channel_id", columnList = "channelId")
+})
 @Entity
 @NoArgsConstructor
 @AllArgsConstructor
@@ -21,11 +25,13 @@ public class Member {
     private String email;
 
     private String googleRefreshToken;
-    private String siteRefreshToken;
     private String channelId;
     private String playlistId;
     private String profileImage;
-    private String nickname;
+    private String channelName;
+    private String channelHandler;
+
+    private LocalDateTime createdAt;
 
     @Enumerated(EnumType.STRING)
     @Builder.Default
@@ -41,5 +47,16 @@ public class Member {
     @PrePersist
     public void prePersist() {
         if (channelId == null || channelId.isEmpty()) hasYoutubeAccess = false;
+    }
+
+    public SimpleMemberInfo toSimpleInfo() {
+        return SimpleMemberInfo.builder()
+                .email(email)
+                .channelId(channelId)
+                .handler(channelHandler)
+                .channelName(channelName)
+                .imageUrl(profileImage)
+                .role(role)
+                .build();
     }
 }
