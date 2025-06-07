@@ -1,10 +1,13 @@
 package com.hanhome.youtube_comments.member.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
 import com.hanhome.youtube_comments.google.service.RenewGoogleTokenService;
 import com.hanhome.youtube_comments.google.service.YoutubeDataService;
 import com.hanhome.youtube_comments.member.dto.AccessTokenDto;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
 import com.hanhome.youtube_comments.member.entity.Member;
+import com.hanhome.youtube_comments.member.object.MemberRole;
 import com.hanhome.youtube_comments.member.object.YoutubeAccountDetail;
 import com.hanhome.youtube_comments.member.repository.MemberRepository;
 import com.hanhome.youtube_comments.oauth.dto.CustomTokenRecord;
@@ -21,6 +24,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -33,6 +39,7 @@ public class MemberService {
     private final YoutubeDataService youtubeDataService;
     private final AESUtil aesUtil;
     private final RenewGoogleTokenService googleTokenService;
+    private final ObjectMapper objectMapper;
 
     @Value("${data.youtube.access-token}")
     private String redisGoogleAtKey;
@@ -50,8 +57,7 @@ public class MemberService {
 
     @Transactional
     public Member insert(String email) {
-        Member member = (Member) redisService.get(pendingSignupKey + ":" + email);
-        System.out.println(member);
+        Member member = objectMapper.convertValue(redisService.get(pendingSignupKey + ":" + email), Member.class);
         if (member != null) {
             member.setIsNewMember(false);
             return memberRepository.save(member);
@@ -62,35 +68,48 @@ public class MemberService {
     @Transactional
     public Member upsert(OAuth2User oauth2User, String googleAccessToken, String googleRefreshToken) throws Exception {
         String email = oauth2User.getAttribute("email");
-        String profileImage = oauth2User.getAttribute("picture");
-        String nickname = oauth2User.getAttribute("name");
+        String encryptedGoogleRefreshToken = aesUtil.encrypt(googleRefreshToken);
+        boolean hasYoutubeAccess = youtubeDataService.hasYoutubeAccess(googleAccessToken);
 
         Member member = memberRepository.findByEmail(email)
                 .orElseGet(() -> {
-                    YoutubeAccountDetail detail = youtubeDataService.getYoutubeAccountDetail(googleAccessToken);
-                    return Member.builder()
-                            .channelId(detail.getChannelId())
-                            .playlistId(detail.getPlaylistId())
-                            .email(email)
-                            .isNewMember(true)
-                            .hasYoutubeAccess(!"".equals(detail.getChannelId()))
-                            .build();
+                    LocalDateTime createdAt = LocalDateTime.ofInstant(Instant.now(), ZoneOffset.UTC);
+                    Member newMember = Member.builder()
+                                    .email(email)
+                                    .googleRefreshToken(encryptedGoogleRefreshToken)
+
+                                    .isNewMember(true)
+                                    .createdAt(createdAt)
+                                    .role(MemberRole.UNLINKED)
+                                    .build();
+
+                    assignYoutubeAccountDetail(newMember, googleAccessToken, hasYoutubeAccess);
+                    return newMember;
                 });
-        if (!member.getHasYoutubeAccess()) {
-            YoutubeAccountDetail detail = youtubeDataService.getYoutubeAccountDetail(googleAccessToken);
-            member.setChannelId(detail.getChannelId());
-            member.setPlaylistId(detail.getPlaylistId());
-            member.setHasYoutubeAccess(true);
+
+        if (!member.getHasYoutubeAccess() && hasYoutubeAccess) {
+            assignYoutubeAccountDetail(member, googleAccessToken, hasYoutubeAccess);
         }
-        String encryptedGoogleRefreshToken = aesUtil.encrypt(googleRefreshToken);
-        member.setGoogleRefreshToken(encryptedGoogleRefreshToken);
-        member.setNickname(nickname);
-        member.setProfileImage(profileImage);
 
         if (!member.getIsNewMember()) member = memberRepository.save(member);
         else redisService.save(pendingSignupKey + ":" + email, member, 60 * 5);
 
         return member;
+    }
+
+    private void assignYoutubeAccountDetail(Member member, String googleAccessToken, boolean hasYoutubeAccess) {
+        try {
+            YoutubeAccountDetail detail = youtubeDataService.getYoutubeAccountDetail(googleAccessToken);
+
+            member.setChannelId(detail.getChannelId());
+            member.setPlaylistId(detail.getPlaylistId());
+            member.setProfileImage(detail.getThumbnailUrl());
+            member.setChannelName(detail.getChannelName());
+            member.setChannelHandler(detail.getChannelHandler());
+            member.setRole(MemberRole.USER);
+            member.setHasYoutubeAccess(hasYoutubeAccess);
+
+        } catch (YoutubeAccessForbiddenException ignored) {}
     }
 
     public RefreshTokenDto getRefreshToken(UUID uuid) {
@@ -108,9 +127,10 @@ public class MemberService {
 
         return RefreshTokenDto.builder()
                 .refreshToken(refreshToken)
-                .nickname(member.getNickname())
+                .nickname(member.getChannelName())
                 .profileImage(member.getProfileImage())
                 .hasYoutubeAccess(member.getHasYoutubeAccess())
+                .role(member.getRole())
                 .build();
     }
 
@@ -124,7 +144,7 @@ public class MemberService {
             Member member = memberRepository.findById(UUID.fromString(uuid)).orElse(null);
             return AccessTokenDto.Renew.builder()
                     .customTokenRecord(tokenProvider.createAccessToken(member.getId(), member.getEmail()))
-                    .nickname(member.getNickname())
+                    .nickname(member.getChannelName())
                     .profileImage(member.getProfileImage())
                     .hasYoutubeAccess(member.getHasYoutubeAccess())
                     .role(member.getRole().name())
