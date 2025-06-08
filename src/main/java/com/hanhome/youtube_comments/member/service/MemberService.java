@@ -1,8 +1,7 @@
 package com.hanhome.youtube_comments.member.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
-import com.hanhome.youtube_comments.google.service.RenewGoogleTokenService;
+import com.hanhome.youtube_comments.google.service.GoogleAPIService;
 import com.hanhome.youtube_comments.google.service.YoutubeDataService;
 import com.hanhome.youtube_comments.member.dto.AccessTokenDto;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
@@ -27,6 +26,7 @@ import org.springframework.web.client.RestTemplate;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -38,29 +38,40 @@ public class MemberService {
     private final RedisService redisService;
     private final YoutubeDataService youtubeDataService;
     private final AESUtil aesUtil;
-    private final RenewGoogleTokenService googleTokenService;
-    private final ObjectMapper objectMapper;
+    private final GoogleAPIService googleAPIService;
 
     @Value("${data.youtube.access-token}")
     private String redisGoogleAtKey;
 
-    private final static String pendingSignupKey = "PENDING_SIGNUP";
-
     public Boolean checkMemberIsNew(String email) {
-        Object redisVal = redisService.get(pendingSignupKey + ":" + email);
-        return redisVal != null;
+        Optional<Member> memberOpt = memberRepository.findByEmail(email);
+        if (memberOpt.isPresent()) return memberOpt.get().getIsPendingState();
+        return true;
     }
 
-    public void clearRedisEmailKey(String email) {
-        redisService.remove(pendingSignupKey + ":" + email);
+    @Transactional
+    public void rejectSignup(String email) throws Exception {
+        Optional<Member> memberOpt = memberRepository.findByEmail(email);
+        if (memberOpt.isPresent()) {
+            UUID uuid = memberOpt.get().getId();
+            revokeGoogleGrant(uuid);
+            memberRepository.delete(memberOpt.get());
+        }
+
+    }
+
+    @Transactional
+    public void acceptSignup(String email) {
+        Member member = memberRepository.findByEmail(email).get();
+        member.setIsPendingState(false);
     }
 
     @Transactional
     public Member insert(String email) {
-        Member member = objectMapper.convertValue(redisService.get(pendingSignupKey + ":" + email), Member.class);
-        if (member != null) {
-            member.setIsNewMember(false);
-            return memberRepository.save(member);
+        Optional<Member> member = memberRepository.findByEmail(email);
+        if (member.isPresent()) {
+            member.get().setIsPendingState(false);
+            return member.get();
         }
         return null;
     }
@@ -68,43 +79,43 @@ public class MemberService {
     @Transactional
     public Member upsert(OAuth2User oauth2User, String googleAccessToken, String googleRefreshToken) throws Exception {
         String email = oauth2User.getAttribute("email");
+        String profileImageUrl = oauth2User.getAttribute("picture");
+        String youtubeChannelName = oauth2User.getAttribute("name");
         String encryptedGoogleRefreshToken = aesUtil.encrypt(googleRefreshToken);
-        boolean hasYoutubeAccess = youtubeDataService.hasYoutubeAccess(googleAccessToken);
 
         Member member = memberRepository.findByEmail(email)
                 .orElseGet(() -> {
                     LocalDateTime createdAt = LocalDateTime.ofInstant(Instant.now(), ZoneOffset.UTC);
                     Member newMember = Member.builder()
-                                    .email(email)
-                                    .googleRefreshToken(encryptedGoogleRefreshToken)
+                            .email(email)
+                            .googleRefreshToken(encryptedGoogleRefreshToken)
+                            .channelName(youtubeChannelName)
+                            .profileImage(profileImageUrl)
+                            .isPendingState(true)
+                            .createdAt(createdAt)
+                            .role(MemberRole.UNLINKED)
+                            .hasYoutubeAccess(false)
+                            .build();
 
-                                    .isNewMember(true)
-                                    .createdAt(createdAt)
-                                    .role(MemberRole.UNLINKED)
-                                    .build();
-
-                    assignYoutubeAccountDetail(newMember, googleAccessToken, hasYoutubeAccess);
-                    return newMember;
+                    return memberRepository.save(newMember);
                 });
 
-        if (!member.getHasYoutubeAccess() && hasYoutubeAccess) {
-            assignYoutubeAccountDetail(member, googleAccessToken, hasYoutubeAccess);
-        }
+        memberRepository.save(member);
 
-        if (!member.getIsNewMember()) member = memberRepository.save(member);
-        else redisService.save(pendingSignupKey + ":" + email, member, 60 * 5);
+        if (!member.getHasYoutubeAccess()) {
+            assignYoutubeAccountDetail(member, googleAccessToken);
+        }
 
         return member;
     }
 
-    private void assignYoutubeAccountDetail(Member member, String googleAccessToken, boolean hasYoutubeAccess) {
+    private void assignYoutubeAccountDetail(Member member, String googleAccessToken) {
         try {
             YoutubeAccountDetail detail = youtubeDataService.getYoutubeAccountDetail(googleAccessToken);
+            boolean hasYoutubeAccess = googleAPIService.hasYoutubeAccess(googleAccessToken);
 
             member.setChannelId(detail.getChannelId());
             member.setPlaylistId(detail.getPlaylistId());
-            member.setProfileImage(detail.getThumbnailUrl());
-            member.setChannelName(detail.getChannelName());
             member.setChannelHandler(detail.getChannelHandler());
             member.setRole(MemberRole.USER);
             member.setHasYoutubeAccess(hasYoutubeAccess);
@@ -158,21 +169,19 @@ public class MemberService {
         redisService.searchNRemove(uuid.toString(), false);
     }
 
-    public void withdraw(UUID uuid) throws Exception {
-        String googleAccessToken = getGoogleAccessToken(uuid);
+    private void revokeGoogleGrant(UUID uuid) throws Exception {
+        String googleAccessToken = (String) redisService.get(redisGoogleAtKey + ":" + uuid);
+
+        googleAccessToken = googleAccessToken == null ? googleAPIService.takeNewGoogleAccessToken(uuid) : googleAccessToken;
+
         String revokeUrl = "https://oauth2.googleapis.com/revoke?token=" + googleAccessToken;
-        revokeGoogleOAuth(revokeUrl);
-
-        memberRepository.deleteById(uuid);
-        redisService.searchNRemove(uuid.toString(), false);
-    }
-
-    public void revokeGoogleOAuth(String revokeUrl) {
         new RestTemplate().postForObject(revokeUrl, null, String.class);
     }
 
-    private String getGoogleAccessToken(UUID uuid) throws Exception {
-        String googleAccessToken = (String) redisService.get(redisGoogleAtKey + ":" + uuid);
-        return googleAccessToken == null ? googleTokenService.renewAccessToken(uuid) : googleAccessToken;
+    public void withdraw(UUID uuid) throws Exception {
+        revokeGoogleGrant(uuid);
+
+        memberRepository.deleteById(uuid);
+        redisService.searchNRemove(uuid.toString(), false);
     }
 }
