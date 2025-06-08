@@ -68,10 +68,11 @@ public class CustomOauth2SuccessHandler implements AuthenticationSuccessHandler 
         try {
             Member member = memberService.upsert(oauthUser, googleAccessToken, googleRefreshToken);
 
-            if (member.getIsNewMember()) {
+            if (member.getIsPendingState()) {
                 Cookie emailCookie = cookieService.getCookie("email", member.getEmail(), (int) 1000 * 60 * 30); // 30분 임시 쿠키
                 response.addCookie(emailCookie);
             } else {
+                // TODO: redis에 저장할 google access token 암호화!
                 redisService.save(redisGoogleAtKey + ":" + member.getId().toString(), googleAccessToken, 1, TimeUnit.HOURS);
 
                 CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());

@@ -42,7 +42,9 @@ public class Member {
     @Column(columnDefinition = "boolean default false")
     private Boolean hasYoutubeAccess = false;
 
-    private Boolean isNewMember;
+    @Builder.Default
+    @Column(columnDefinition = "boolean default false")
+    private Boolean isPendingState = false;
 
     @PrePersist
     public void prePersist() {
@@ -57,6 +59,7 @@ public class Member {
                 .channelName(channelName)
                 .imageUrl(profileImage)
                 .role(role)
+                .userId(id.toString())
                 .build();
     }
 }

@@ -16,4 +16,5 @@ public class SimpleMemberInfo {
     private String imageUrl;
     private String channelName;
     private MemberRole role;
+    private String userId;
 }
