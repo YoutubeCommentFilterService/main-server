@@ -67,7 +67,7 @@ public class MemberController {
 
             Member member = memberService.insert(email);
             if (member != null) {
-                memberService.clearRedisEmailKey(email);
+                memberService.acceptSignup(email);
                 CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());
 
                 long ttl = customAccessToken.ttl();
@@ -83,11 +83,11 @@ public class MemberController {
     }
 
     @PostMapping("/reject-signin")
-    public ResponseEntity<?> rejectSignin(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<?> rejectSignin(HttpServletRequest request, HttpServletResponse response) throws Exception {
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             String email = getAndRemoveSpecificCookie(response, cookies, "email");
-            memberService.clearRedisEmailKey(email);
+            memberService.rejectSignup(email);
         }
         return ResponseEntity.noContent().build();
     }
