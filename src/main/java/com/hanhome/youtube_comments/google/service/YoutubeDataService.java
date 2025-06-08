@@ -209,8 +209,6 @@ public class YoutubeDataService {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         executor.shutdown();
 
-        printObjectPretty(commentThreadMaps);
-
         List<PredictionCombinedResource> predictResults = requestPredictCommentsClass(commentThreadMaps, channelId)
                 .stream()
                 .filter(predictResult -> {
@@ -233,7 +231,7 @@ public class YoutubeDataService {
     private List<PredictionCombinedResource> requestPredictCommentsClass(List<CommentThreadMap> commentThreadMaps, String channelId) {
         List<YoutubeComment> flattedCommentThreadMaps = commentThreadMaps.stream()
                 .flatMap(thread -> Stream.concat(Stream.of(thread.getTopLevel()), thread.getReplies().stream()))
-                .filter(commentThread -> !channelId.equals(commentThread.getChannelId()))
+//                .filter(commentThread -> !channelId.equals(commentThread.getChannelId()))
                 .toList();
 
         if (flattedCommentThreadMaps.isEmpty()) return Collections.emptyList();
