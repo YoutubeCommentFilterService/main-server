@@ -1,10 +1,8 @@
 package com.hanhome.youtube_comments.google.dto;
 
 import com.hanhome.youtube_comments.google.object.YoutubeVideo;
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.*;
-import org.springframework.lang.Nullable;
 
 import java.util.List;
 
@@ -14,11 +12,6 @@ public class GetVideosDto {
     public static class Request {
         @Min(value = 1, message = "페이지는 1 이상입니다.")
         private Integer page;
-
-        @Nullable
-        @Min(value = 1, message = "가져오는 개수는 1 이상입니다.")
-        @Max(value = 50, message = "가져오는 개수는 50 이하입니다.")
-        private Integer take;
     }
 
     @Setter
