@@ -35,7 +35,7 @@ public class RedisService {
     }
 
     public void searchNRemove(String pattern, boolean isPrefix) {
-        pattern = isPrefix ? pattern+"*" : "*" + pattern;
+        pattern = isPrefix ? pattern + "*" : "*" + pattern;
         ScanOptions scanOptions = ScanOptions.scanOptions().match(pattern).count(100).build();
         Cursor<byte[]> cursor =  redisTemplate.getConnectionFactory().getConnection().scan(scanOptions);
 
