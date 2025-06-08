@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.NullNode;
 import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
 import com.hanhome.youtube_comments.google.dto.*;
 import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
@@ -29,6 +28,7 @@ import com.hanhome.youtube_comments.redis.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
@@ -36,15 +36,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriBuilder;
 import reactor.core.publisher.Mono;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -58,19 +50,16 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class YoutubeDataService {
     private final RedisService redisService;
-    private final RenewGoogleTokenService googleTokenService;
     private final PredictServerProperties predictServerProperties;
     private final ObjectMapper objectMapper;
     private final LoggingPredictedService loggingPredictedService;
+    private final GoogleAPIService googleAPIService;
 
     private final WebClient webClient = WebClient.create();
     private final static int COMMENT_THREAD_MAX_REPLY = 5;
     private final static int VIDEO_MAX_RESULT = 50;
     private final static int COMMENT_MAX_RESULT = 100;
     private final static String VIDEO_REDIS_KEY = "NEXT_VIDEO";
-    private final static String VIDEO_COMMENT_REDIS_KEY = "NEXT_COMMENT_V";
-
-    private final String YOUTUBE_SCOPE = "youtube.force-ssl";
 
     @Value("${data.youtube.api-key}")
     private String apiKey;
@@ -80,25 +69,12 @@ public class YoutubeDataService {
 
     private String getGoogleAccessToken(UUID uuid) throws Exception {
         String googleAccessToken = (String) redisService.get(redisGoogleAtKey + ":" + uuid);
-        return googleAccessToken == null ? googleTokenService.renewAccessToken(uuid) : googleAccessToken;
-    }
-
-    public String getChannelId(String googleAccessToken) {
-        Map<String, Object> queries = generateDefaultQueries();
-        queries.put("part", "id,contentDetails");
-        queries.put("mine", true);
-
-        return webClient.get()
-                .uri(uriBuilder -> generateUri(uriBuilder, queries, "channels"))
-                .headers(headers -> setCommonHeader(headers, googleAccessToken))
-                .retrieve()
-                .bodyToMono(JsonNode.class)
-                .flatMap(this::generateChannelId)
-                .block();
+        return googleAccessToken == null ? googleAPIService.takeNewGoogleAccessToken(uuid) : googleAccessToken;
     }
 
     public YoutubeAccountDetail getYoutubeAccountDetail(String googleAccessToken) {
-        Map<String, Object> queries = generateDefaultQueries();
+        Map<String, Object> queries = new HashMap<>();
+        queries.put("key", apiKey);
         queries.put("part", "snippet,contentDetails");
         queries.put("mine", true);
 
@@ -119,6 +95,21 @@ public class YoutubeDataService {
                 .block();
     }
 
+    public YoutubeAccountDetail getYoutubeAccountDetail(UUID uuid) throws Exception {
+        Map<String, Object> queries = new HashMap<>();
+        queries.put("part", "snippet,contentDetails");
+        queries.put("mine", true);
+
+        return googleAPIService.getObjectFromYoutubeDataAPI(
+                HttpMethod.GET,
+                "channels",
+                queries,
+                uuid,
+                ChannelListResponse.class,
+                this::generateYoutubeChannelDetail
+        );
+    }
+
     private Mono<YoutubeAccountDetail> generateYoutubeChannelDetail(ChannelListResponse channelListResponse) {
         ChannelResource channelResource = channelListResponse.getItems().get(0);
         ChannelSnippetResource channelSnippetResource = channelResource.getSnippet();
@@ -128,58 +119,34 @@ public class YoutubeDataService {
                 .channelId(channelResource.getId())
                 .playlistId(channelContentDetailsResource.getRelatedPlaylists().getUploads())
                 .channelHandler(channelSnippetResource.getCustomUrl())
-                .channelName(channelSnippetResource.getTitle())
-                .thumbnailUrl(channelSnippetResource.getThumbnails().getMedium().getUrl())
-                .build());
-    }
-
-    private Mono<YoutubeAccountDetail> generateYoutubeChannelDetail(JsonNode rootNode) {
-        JsonNode items = rootNode.path("items");
-        JsonNode channel = items.isArray() && !items.isEmpty() ? items.get(0) : NullNode.getInstance();
-        String channelId = channel.path("id").asText("");
-        String uploadsPlaylistId = channel.path("contentDetails").path("relatedPlaylists").path("uploads").asText("");
-
-        return Mono.just(YoutubeAccountDetail.builder()
-                .channelId(channelId)
-                .playlistId(uploadsPlaylistId)
+//                .channelName(channelSnippetResource.getTitle())
+//                .thumbnailUrl(channelSnippetResource.getThumbnails().getMedium().getUrl())
                 .build());
     }
 
     public GetVideosDto.Response getVideosByPlaylist(GetVideosDto.Request request, Member member) throws Exception {
         UUID uuid = member.getId();
         String playlistId = member.getPlaylistId();
-        String googleAccessToken = getGoogleAccessToken(uuid);
 
-        if (playlistId == null || playlistId.isEmpty()) return GetVideosDto.Response.builder()
+        if (!member.getHasYoutubeAccess()) return GetVideosDto.Response.builder()
                 .isLast("Y")
                 .items(new ArrayList<>())
                 .build();
 
-        Map<String, Object> getVideoQuery = generateDefaultQueries();
+        Map<String, Object> queries = new HashMap<>();
+        queries.put("part", "snippet,status");
+        queries.put("playlistId", playlistId);
+        queries.put("maxResults", VIDEO_MAX_RESULT);
 
-        getVideoQuery.put("part", "snippet,status");
-        getVideoQuery.put("playlistId", playlistId);
+        if (request.getPage() != 1) putNextPageTokenOnQuery(queries, VIDEO_REDIS_KEY, uuid);
 
-        int maxResult = request.getTake() == null ? VIDEO_MAX_RESULT : request.getTake();
-        getVideoQuery.put("maxResults", maxResult);
-
-        if (request.getPage() != 1) {
-            putNextPageTokenOnQuery(getVideoQuery, VIDEO_REDIS_KEY, uuid);
-        }
-
-        PlaylistItemListResponse playlistItemListResponse = webClient.get()
-                .uri(uriBuilder -> generateUri(uriBuilder, getVideoQuery, "playlistItems"))
-                .headers(headers -> setCommonHeader(headers, googleAccessToken))
-                .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError, clientResponse ->
-                    clientResponse.bodyToMono(String.class)
-                            .flatMap(errorBody -> {
-                                System.err.println("Error Response: " + errorBody);
-                                return Mono.error(new RuntimeException("API Error: " + errorBody));
-                            })
-                )
-                .bodyToMono(PlaylistItemListResponse.class)
-                .block();
+        PlaylistItemListResponse playlistItemListResponse = googleAPIService.getObjectFromYoutubeDataAPI(
+                HttpMethod.GET,
+                "playlistItems",
+                queries,
+                uuid,
+                PlaylistItemListResponse.class
+        );
 
         assert playlistItemListResponse != null;
         List<YoutubeVideo> resultVideoResources = playlistItemListResponse.getItems().stream().map(item -> {
@@ -210,33 +177,39 @@ public class YoutubeDataService {
                 .build();
     }
 
-    public GetCommentsDto.Response getCommentsByVideoId(GetCommentsDto.Request request, String videoId, Member member) throws Exception {
+    public GetCommentsDto.Response getCommentsByVideoId(String videoId, Member member) throws Exception {
         UUID uuid = member.getId();
         String channelId = member.getChannelId();
         String googleAccessToken = getGoogleAccessToken(uuid);
 
-        Map<String, Object> queries = generateDefaultQueries();
+        Map<String, Object> queries = new HashMap<>();
         queries.put("part", "snippet,replies");
         queries.put("videoId", videoId);
-        queries.put("maxResults", request.getTake() == null ? COMMENT_MAX_RESULT : request.getTake());
+        queries.put("maxResults", COMMENT_MAX_RESULT);
         queries.put("moderationStatus", "published");
-        if (request.getPage() != 1) putNextPageTokenOnQuery(queries, VIDEO_COMMENT_REDIS_KEY, uuid);
 
         ExecutorService executor = Executors.newFixedThreadPool(10);
 
-        List<CommentThreadMap> commentThreadMaps = getCommentThreadListResponse(queries, googleAccessToken);
+        List<CommentThreadMap> commentThreadMaps = getCommentThreadListResponse(queries, googleAccessToken, uuid);
         List<CompletableFuture<Object>> futures = commentThreadMaps.stream()
                 .filter(commentThread -> commentThread.getReplies() == null)
                 .map(commentThread ->
                         CompletableFuture.supplyAsync(() -> {
                             YoutubeComment topLevel = commentThread.getTopLevel();
-                            List<YoutubeComment> result = getRepliesFromParentId(topLevel.getId(), googleAccessToken);
+                            List<YoutubeComment> result = null;
+                            try {
+                                result = getRepliesFromParentId(topLevel.getId(), googleAccessToken, uuid);
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
                             commentThread.setReplies(result);
                             return null;
                         }, executor)
                 ).toList();
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         executor.shutdown();
+
+        printObjectPretty(commentThreadMaps);
 
         List<PredictionCombinedResource> predictResults = requestPredictCommentsClass(commentThreadMaps, channelId)
                 .stream()
@@ -249,7 +222,6 @@ public class YoutubeDataService {
                 .toList();
 
         loggingPredictedService.savePredictLogging(videoId, predictResults);
-//        savePredictedResult(videoId, predictResults);
 
         return GetCommentsDto.Response.builder()
                 .predictCommonResponse(PredictCommonResponse.builder().code(200).message("success").build())
@@ -301,43 +273,18 @@ public class YoutubeDataService {
                 .toList();
     }
 
-    private List<YoutubeComment> getRepliesFromParentId(String parentCommentId, String googleAccessToken) {
-        List<YoutubeComment> replies = new ArrayList<>();
-        Map<String, Object> queries = new HashMap<>();
-        queries.put("part", "snippet");
-        queries.put("maxResults", COMMENT_MAX_RESULT);
-        queries.put("parentId", parentCommentId);
-
-        while (true) {
-            CommentListResponse commentListResponse = webClient.get()
-                    .uri(uriBuilder -> generateUri(uriBuilder, queries, "comments"))
-                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
-                    .retrieve()
-                    .bodyToMono(CommentListResponse.class)
-                    .block();
-            assert commentListResponse != null;
-            replies.addAll(commentListResponse.getItems().stream().map(this::convertCommentSnippetToCommentObject).toList());
-
-            String nextPageToken = commentListResponse.getNextPageToken();
-            if (nextPageToken == null) break;
-            queries.put("pageToken", nextPageToken);
-        }
-        return replies;
-    }
-
     // 아 몰랑 전부 가져와! 이러면 redis로 관리할 필요가 없어진다!
-    private List<CommentThreadMap> getCommentThreadListResponse(Map<String, Object> queries, String googleAccessToken) {
+    private List<CommentThreadMap> getCommentThreadListResponse(Map<String, Object> queries, String googleAccessToken, UUID uuid) throws Exception {
         List<CommentThreadMap> result = new ArrayList<>();
         while (true) {
-            CommentThreadListResponse commentThreadListResponse = webClient.get()
-                    .uri(uriBuilder -> generateUri(uriBuilder, queries, "commentThreads"))
-                    .headers(headers -> setCommonHeader(headers, googleAccessToken)) // access token이 없더라도 api key 전달으로 가능!
-                    .retrieve()
-                    .onStatus(HttpStatusCode::is4xxClientError, response -> Mono.empty())
-                    .bodyToMono(CommentThreadListResponse.class)
-                    .block();
+            CommentThreadListResponse commentThreadListResponse = googleAPIService.getObjectFromYoutubeDataAPI(
+                    HttpMethod.GET,
+                    "commentThreads",
+                    queries,
+                    uuid,
+                    CommentThreadListResponse.class
+            );
 
-            assert commentThreadListResponse != null;
             List<CommentThreadMap> temp = Optional.ofNullable(commentThreadListResponse.getItems())
                     .orElse(Collections.emptyList())
                     .stream()
@@ -367,6 +314,30 @@ public class YoutubeDataService {
         return result;
     }
 
+    private List<YoutubeComment> getRepliesFromParentId(String parentCommentId, String googleAccessToken, UUID uuid) throws Exception {
+        List<YoutubeComment> replies = new ArrayList<>();
+        Map<String, Object> queries = new HashMap<>();
+        queries.put("part", "snippet");
+        queries.put("maxResults", COMMENT_MAX_RESULT);
+        queries.put("parentId", parentCommentId);
+
+        while (true) {
+            CommentListResponse commentListResponse = googleAPIService.getObjectFromYoutubeDataAPI(
+                    HttpMethod.GET,
+                    "comments",
+                    queries,
+                    uuid,
+                    CommentListResponse.class
+            );
+            replies.addAll(commentListResponse.getItems().stream().map(this::convertCommentSnippetToCommentObject).toList());
+
+            String nextPageToken = commentListResponse.getNextPageToken();
+            if (nextPageToken == null) break;
+            queries.put("pageToken", nextPageToken);
+        }
+        return replies;
+    }
+
     private YoutubeComment convertCommentSnippetToCommentObject(CommentResource commentResource) {
         CommentSnippetResource commentSnippet = commentResource.getSnippet();
         return YoutubeComment.builder()
@@ -379,48 +350,33 @@ public class YoutubeDataService {
     }
 
     public void updateModerationAndAuthorBan(DeleteCommentsDto.Request request, Member member) throws Exception {
-        String googleAccessToken = getGoogleAccessToken(member.getId());
-        Map<String, Object> queries = generateDefaultQueries();
+        UUID uuid = member.getId();
 
         // 댓글 삭제 - 작성자만 삭제 가능 https://developers.google.com/youtube/v3/guides/implementation/comments?hl=ko#comments-delete
         // 게시 상태 변경 - 채널 관리자가 관리 가능 https://developers.google.com/youtube/v3/guides/implementation/comments?hl=ko#comments-set-moderation-status
+        Map<String, Object> queries = new HashMap<>();
         queries.put("moderationStatus", "rejected");
 
         // Just Remove Comment
         if (request.getJustDeleteComments() != null && !request.getJustDeleteComments().isEmpty()) {
             String videoId = request.getVideoId();
-            List<DeleteCommentObject> targetDeleteComments = request.getJustDeleteComments().stream()
-                    .filter(deleteComment -> !member.getChannelId().equals(deleteComment.getChannelId()))
-                    .toList();
-
-            if (targetDeleteComments.isEmpty()) return;
+            List<DeleteCommentObject> targetDeleteComments = request.getJustDeleteComments();
 
             loggingPredictedService.saveDeletedLogging(videoId, targetDeleteComments);
-//            saveUserDeleteRequest(videoId, targetDeleteComments);
 
             String removeCommentQueries = targetDeleteComments.stream()
                     .map(DeleteCommentObject::getCommentId)
                     .collect(Collectors.joining(","));
             queries.put("id", removeCommentQueries);
 
-            webClient.post()
-                    .uri(uriBuilder -> generateUri(uriBuilder, queries, "comments/setModerationStatus"))
-                    .headers(headers -> setCommonHeader(headers, googleAccessToken))
-                    .retrieve()
-                    .bodyToMono(Void.class)
-                    .onErrorResume(e -> {
-                        System.out.println(e);
-                        return null;
-                    })
-                    .block();
+            googleAPIService.getObjectFromYoutubeDataAPI(
+                    HttpMethod.POST,
+                    "comments/setModerationStatus",
+                    queries,
+                    uuid,
+                    Void.class
+            );
         }
-    }
-
-    private Map<String, Object> generateDefaultQueries() {
-        Map<String, Object> queries = new HashMap<>();
-
-        queries.put("key", apiKey);
-        return queries;
     }
 
     private void putNextPageTokenOnQuery(Map<String, Object> queries, String redisKeyPrefix, UUID uuid) {
@@ -447,82 +403,11 @@ public class YoutubeDataService {
         headers.add("Accept", "application/json");
     }
 
-    private void savePredictedResult(String id, List<PredictionCombinedResource> responsePredictedItems) {
-        if (!responsePredictedItems.isEmpty()) {
-            String filePath = generateFilePath(id, "predict");
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath, true))) {
-                for (PredictionCombinedResource item : responsePredictedItems) {
-                    String formattedData = predictionFormatData(item);
-                    writer.write(formattedData);
-                    writer.newLine();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void saveUserDeleteRequest(String id, List<DeleteCommentObject> justDeleteComments) {
-        if (!justDeleteComments.isEmpty()) {
-            String filePath = generateFilePath(id, "delete");
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath, true))) {
-                for (DeleteCommentObject item : justDeleteComments) {
-                    String formattedData = item.getCommentId();
-                    writer.write(formattedData);
-                    writer.newLine();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private String generateFilePath(String id, String type) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss");
-        String formattedDate = ZonedDateTime.now().format(formatter);
-        Path dirPath = Paths.get("tmp", "result", id);
-        if (!Files.exists(dirPath)) {
-            try {
-                Files.createDirectories(dirPath);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        return dirPath.resolve(type + "-" + formattedDate + ".txt").toString();
-    }
-
-    private String predictionFormatData(PredictionCombinedResource item) {
-        return String.format("%s - %s\n\t%s - %s\n\t%s\n\t%s - %s\n\t%s",
-                item.getId(), item.getProfileImage(),
-                item.getNickname(), item.getNicknamePredict(), item.getNicknameProb().toString(),
-                item.getComment(), item.getCommentPredict(), item.getCommentProb().toString()
-        );
-    }
-
     private void printObjectPretty(Object obj) {
         try {
             System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(obj));
         } catch (JsonProcessingException e) {
             System.out.println("Runtime Error!");
         }
-    }
-
-    public boolean hasYoutubeAccess(String googleAccessToken) {
-        return Boolean.TRUE.equals(webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .scheme("https")
-                        .host("www.googleapis.com")
-                        .path("/oauth2/v1/tokeninfo")
-                        .queryParam("access_token", googleAccessToken)
-                        .build()
-                )
-                .retrieve()
-                .bodyToMono(JsonNode.class)
-                .flatMap(jsonNode -> {
-                    String[] scopes = jsonNode.get("scope").asText().split(" ");
-                    boolean result = Arrays.stream(scopes).anyMatch(s -> s.endsWith(YOUTUBE_SCOPE));
-                    return Mono.just(result);
-                })
-                .block());
     }
 }
