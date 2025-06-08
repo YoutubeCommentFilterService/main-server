@@ -20,7 +20,7 @@ public class AdminController {
     }
 
     @DeleteMapping
-    public ResponseEntity<?> deleteUSer(@Validated @ModelAttribute DeleteUserDto.Request request) throws Exception {
+    public ResponseEntity<?> deleteUSer(@ModelAttribute DeleteUserDto.Request request) throws Exception {
         adminService.deleteUser(request);
         return ResponseEntity.accepted().build();
     }

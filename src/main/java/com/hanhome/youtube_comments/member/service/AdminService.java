@@ -13,6 +13,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -34,7 +35,6 @@ public class AdminService {
         Sort.Direction direction = Sort.Direction.fromString("DESC");
         PageRequest pageable = PageRequest.of(page, take, Sort.by(direction, "createdAt"));
 
-//        Page<Member> result =
         Page<Member> result = memberRepository.findByIdNot(userDetails.getMember().getId(), pageable);
         List<SimpleMemberInfo> members = result.get().map(Member::toSimpleInfo).toList();
 
@@ -46,9 +46,12 @@ public class AdminService {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
     public void deleteUser(DeleteUserDto.Request request) throws Exception {
         String targetChannelId = request.getChannelId();
-        Optional<Member> targetMember = memberRepository.findByChannelId(targetChannelId);
+        UUID targetUserId = UUID.fromString(request.getUserId());
+        Optional<Member> targetMember = memberRepository.findByChannelId(targetChannelId)
+                .or(() -> memberRepository.findById(targetUserId));
         if (targetMember.isPresent()) {
             UUID targetUserUUID = targetMember.get().getId();
             memberService.withdraw(targetUserUUID);

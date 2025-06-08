@@ -8,5 +8,6 @@ public class DeleteUserDto {
     @Setter
     public static class Request {
         private String channelId;
+        private String userId;
     }
 }
