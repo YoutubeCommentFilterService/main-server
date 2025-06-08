@@ -13,13 +13,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 @Controller
 @RequestMapping("/api/youtube")
 @RequiredArgsConstructor
 public class YoutubeDataController {
-    private final YoutubeDataService commentService;
+    private final YoutubeDataService youtubeDataService;
     private final UUIDFromContext uuidFromContext;
 
     @GetMapping("/videos")
@@ -27,22 +25,21 @@ public class YoutubeDataController {
             @Valid @ModelAttribute GetVideosDto.Request requestDto
     ) throws Exception {
         Member member = uuidFromContext.getMember();
-        return ResponseEntity.ok(commentService.getVideosByPlaylist(requestDto, member));
+        return ResponseEntity.ok(youtubeDataService.getVideosByPlaylist(requestDto, member));
     }
 
     @GetMapping("/videos/{videoId}")
     public ResponseEntity<GetCommentsDto.Response> getCommentsByVideoId(
-            @Valid @ModelAttribute GetCommentsDto.Request requestDto,
             @PathVariable @Size(min = 1) String videoId
     ) throws Exception {
         Member member = uuidFromContext.getMember();
-        return ResponseEntity.ok(commentService.getCommentsByVideoId(requestDto, videoId, member));
+        return ResponseEntity.ok(youtubeDataService.getCommentsByVideoId(videoId, member));
     }
 
-    @DeleteMapping
+    @DeleteMapping("/comments")
     public ResponseEntity<Void> deleteComments(@RequestBody DeleteCommentsDto.Request requestDto) throws Exception {
         Member member = uuidFromContext.getMember();
-        commentService.updateModerationAndAuthorBan(requestDto, member);
+        youtubeDataService.updateModerationAndAuthorBan(requestDto, member);
         return ResponseEntity.noContent().build();
     }
 }
