@@ -22,4 +22,8 @@ public class YoutubeCommonPagination {
     private PageInfo pageInfo;
 
     public Integer getTotalResults() { return pageInfo.getTotalResults(); }
+
+    public YoutubeCommonPagination() {
+        nextPageToken = null;
+    }
 }
