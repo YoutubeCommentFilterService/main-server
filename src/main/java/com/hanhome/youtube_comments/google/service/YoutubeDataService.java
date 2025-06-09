@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
 import com.hanhome.youtube_comments.google.dto.*;
-import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
+import com.hanhome.youtube_comments.exception.RenewAccessTokenFailedException;
+import com.hanhome.youtube_comments.exception.YoutubeAccessForbiddenException;
+import com.hanhome.youtube_comments.exception.YoutubeVideoCommentDisabledException;
 import com.hanhome.youtube_comments.google.object.*;
 import com.hanhome.youtube_comments.google.object.predict.PredictionCombinedResource;
 import com.hanhome.youtube_comments.google.object.predict.PredictionResponse;
@@ -186,11 +188,26 @@ public class YoutubeDataService {
         queries.put("part", "snippet,replies");
         queries.put("videoId", videoId);
         queries.put("maxResults", COMMENT_MAX_RESULT);
-        queries.put("moderationStatus", "published");
 
         ExecutorService executor = Executors.newFixedThreadPool(10);
+        List<CommentThreadMap> commentThreadMaps;
 
-        List<CommentThreadMap> commentThreadMaps = getCommentThreadListResponse(queries, googleAccessToken, uuid);
+        try {
+            commentThreadMaps = getCommentThreadListResponse(queries, googleAccessToken, uuid);
+        } catch (YoutubeAccessForbiddenException | YoutubeVideoCommentDisabledException e) {
+            return GetCommentsDto.Response.builder()
+                    .predictCommonResponse(PredictCommonResponse.builder().code(403).message(e.getMessage()).build())
+                    .items(List.of())
+                    .isLast("Y")
+                    .build();
+        } catch (RenewAccessTokenFailedException e) {
+            return GetCommentsDto.Response.builder()
+                    .predictCommonResponse(PredictCommonResponse.builder().code(401).message(e.getMessage()).build())
+                    .items(List.of())
+                    .isLast("Y")
+                    .build();
+        }
+
         List<CompletableFuture<Object>> futures = commentThreadMaps.stream()
                 .filter(commentThread -> commentThread.getReplies() == null)
                 .map(commentThread ->
