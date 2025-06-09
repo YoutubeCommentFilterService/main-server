@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.oauth.provider;
 
+import com.hanhome.youtube_comments.exception.InvalidJWTTokenException;
 import com.hanhome.youtube_comments.oauth.dto.CustomTokenRecord;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
@@ -62,9 +63,9 @@ public class JwtTokenProvider {
                     .parseClaimsJws(token)
                     .getBody();
         } catch (ExpiredJwtException e) {
-            throw new RuntimeException("JWT expired");
+            throw new InvalidJWTTokenException("JWT expired");
         } catch (Exception e) {
-            throw new RuntimeException("JWT Validation failed");
+            throw new InvalidJWTTokenException("JWT Validation failed");
         }
     }
 }
