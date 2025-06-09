@@ -1,11 +1,9 @@
 package com.hanhome.youtube_comments.google.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.hanhome.youtube_comments.exception.*;
 import com.hanhome.youtube_comments.google.dto.RenewGoogleTokenDto;
-import com.hanhome.youtube_comments.google.exception.GoogleInvalidGrantException;
-import com.hanhome.youtube_comments.google.exception.GoogleRefreshTokenNotFoundException;
-import com.hanhome.youtube_comments.google.exception.RenewAccessTokenFailedException;
-import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.common.YoutubeCommonPagination;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.token.RenewAccessTokenErrorResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.token.RenewAccessTokenResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.token.RequestErrorResponse;
@@ -108,18 +106,9 @@ public class GoogleAPIService {
 
         try {
             return doRequest(httpMethod, endpoint, queries, uuid, toMono, bodyProcessor, body);
-
         } catch (GoogleInvalidGrantException e) {
-            System.out.println("Access Token Expired!");
             takeNewGoogleAccessToken(uuid);
-
             return doRequest(httpMethod, endpoint, queries, uuid, toMono, bodyProcessor, body);
-        } catch (YoutubeAccessForbiddenException e) {
-            System.out.println("Permission Not Fulled!");
-            return null;
-        } catch (RenewAccessTokenFailedException e) {
-            System.out.println("Renew Token Not Available");
-            return null;
         }
     }
 
@@ -135,21 +124,26 @@ public class GoogleAPIService {
         WebClient.ResponseSpec responseSpec = generateRequest(uuid, httpMethod, endpoint, queries, body);
 
         return responseSpec
-                .onStatus(HttpStatusCode::is4xxClientError, response ->
-                        response.bodyToMono(RequestErrorResponse.class)
+                .onStatus(
+                        HttpStatusCode::is4xxClientError,
+                        response -> response.bodyToMono(RequestErrorResponse.class)
                                 .flatMap(errorResponse -> {
-                                        String status = errorResponse.getError().getStatus();
-                                        String errorMessage = errorResponse.getError().getErrors().stream()
-                                                .findFirst()
-                                                .map(RequestErrorResponse.ErrorCode.ErrorStatus::getMessage)
-                                                .orElse("DEFAULT_MESSAGE");
-
-                                        if ("UNAUTHENTICATED".equals(status)) {
-                                            return Mono.error(new GoogleInvalidGrantException(errorMessage));
-                                        } else if ("PERMISSION_DENIED".equals(status)) {
-                                            return Mono.error(new YoutubeAccessForbiddenException(errorMessage));
-                                        }
-                                        return Mono.error(new RuntimeException("Unknown Error: " + errorMessage));
+                                        RequestErrorResponse.ErrorCode.ErrorStatus errorCode =
+                                                errorResponse.getError().getErrors().stream()
+                                                        .findFirst()
+                                                        .orElse(new RequestErrorResponse.ErrorCode.ErrorStatus());
+                                        String errorMessage = errorCode.getMessage();
+                                        // reason을 기준으로 해볼까? 어느 API는 status가 있고 어느 API는 status가 없다
+                                        return switch (errorCode.getReason()) {
+                                            case "commentsDisabled" ->  // from youtube data api
+                                                    Mono.<Throwable>error(new YoutubeVideoCommentDisabledException(errorMessage));
+                                            case "authError" ->  // "invalid grant type"
+                                                    Mono.<Throwable>error(new GoogleInvalidGrantException(errorMessage));
+                                            case "insufficientPermissions" ->  // "plz check permissions!!!!"
+                                                    Mono.<Throwable>error(new YoutubeAccessForbiddenException(errorMessage));
+                                            default ->
+                                                    Mono.<Throwable>error(new RuntimeException("Unknown Error: " + errorMessage));
+                                        };
                                 })
                 )
                 .bodyToMono(toMono)
