@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.member.service;
 
+import com.hanhome.youtube_comments.google.exception.RenewAccessTokenFailedException;
 import com.hanhome.youtube_comments.google.exception.YoutubeAccessForbiddenException;
 import com.hanhome.youtube_comments.google.service.GoogleAPIService;
 import com.hanhome.youtube_comments.google.service.YoutubeDataService;
@@ -179,7 +180,9 @@ public class MemberService {
     }
 
     public void withdraw(UUID uuid) throws Exception {
-        revokeGoogleGrant(uuid);
+        try {
+            revokeGoogleGrant(uuid);
+        } catch (RenewAccessTokenFailedException ignored) {}
 
         memberRepository.deleteById(uuid);
         redisService.searchNRemove(uuid.toString(), false);
