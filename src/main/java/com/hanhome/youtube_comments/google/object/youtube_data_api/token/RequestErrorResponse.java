@@ -23,6 +23,12 @@ public class RequestErrorResponse {
         @ToString
         public static class ErrorStatus {
             private String message;
+            private String reason;
+
+            public ErrorStatus() {
+                message = "UNKNOWN";
+                reason = "UNKNOWN";
+            }
         }
 
         private Integer code;
