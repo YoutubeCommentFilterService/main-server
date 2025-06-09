@@ -37,76 +37,28 @@ public class MemberController {
     @GetMapping("/check-new")
     public ResponseEntity<IsNewMemberDto.Response> getIsNewMember(HttpServletRequest request) {
         Cookie[] cookies = request.getCookies();
-        if (cookies != null) {
-            String email = getSpecificCookieVal(cookies, "email");
-            String accessToken = getSpecificCookieVal(cookies, "access_token");
+        if (cookies == null) ResponseEntity.badRequest().build();
 
-            if (!"".equals(email)) {
-                boolean isNewMember = memberService.checkMemberIsNew(email);
-                IsNewMemberDto.Response responseDto = IsNewMemberDto.Response.builder()
-                        .isNewMember(isNewMember)
-                        .build();
-                return ResponseEntity.ok(responseDto);
-            } else if (!"".equals(accessToken)) {
-                IsNewMemberDto.Response responseDto = IsNewMemberDto.Response.builder()
-                        .isNewMember(false)
-                        .build();
-                return ResponseEntity.ok(responseDto);
-            }
-            return ResponseEntity.badRequest().build();
-        }
-        return ResponseEntity.badRequest().build();
+        IsNewMemberDto.Response isNewMemberResponse = memberService.checkIsNewMemberFromCookie(cookies);
+        if (isNewMemberResponse == null) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(isNewMemberResponse);
     }
 
     @PostMapping("/accept-signin")
-    public ResponseEntity<?> acceptSignin(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<?> acceptSignup(HttpServletRequest request, HttpServletResponse response) {
         Cookie[] cookies = request.getCookies();
-        if (cookies != null) {
-            String email = getAndRemoveSpecificCookie(response, cookies, "email");
-            if ("".equals(email)) return ResponseEntity.badRequest().build();
+        if (cookies == null) return ResponseEntity.badRequest().build();
 
-            Member member = memberService.insert(email);
-            if (member != null) {
-                memberService.acceptSignup(email);
-                CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());
-
-                long ttl = customAccessToken.ttl();
-                TimeUnit timeUnit = customAccessToken.timeUnit();
-
-                Cookie accessTokenCookie = cookieService.getAccessTokenCookie(customAccessToken.token(), (int) timeUnit.toSeconds(ttl));
-                response.addCookie(accessTokenCookie);
-
-                return ResponseEntity.ok().build();
-            }
-        }
-        return ResponseEntity.badRequest().build();
-    }
-
-    @PostMapping("/reject-signin")
-    public ResponseEntity<?> rejectSignin(HttpServletRequest request, HttpServletResponse response) throws Exception {
-        Cookie[] cookies = request.getCookies();
-        if (cookies != null) {
-            String email = getAndRemoveSpecificCookie(response, cookies, "email");
-            memberService.rejectSignup(email);
-        }
+        boolean isSignupAccepted = memberService.acceptSignup(cookies, response);
+        if (!isSignupAccepted) return ResponseEntity.badRequest().build();
         return ResponseEntity.noContent().build();
     }
 
-    private String getSpecificCookieVal(Cookie[] cookies, String cookieKey) {
-        for (Cookie cookie : cookies) {
-            if (cookieKey.equals(cookie.getName())) return cookie.getValue();
-        }
-        return "";
-    }
-
-    private String getAndRemoveSpecificCookie(HttpServletResponse response, Cookie[] cookies, String cookieKey) {
-        String cookieVal = getSpecificCookieVal(cookies, cookieKey);
-        Cookie emailCookie = new Cookie(cookieKey, null);
-        emailCookie.setDomain(defaultDomain);
-        emailCookie.setMaxAge(0);
-        emailCookie.setPath("/");
-        response.addCookie(emailCookie);
-        return cookieVal;
+    @PostMapping("/reject-signin")
+    public ResponseEntity<?> rejectSignin(HttpServletRequest request, HttpServletResponse response) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) memberService.rejectSignup(cookies, response);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/refresh-token")
@@ -117,24 +69,24 @@ public class MemberController {
         return ResponseEntity.ok(refreshTokenDto);
     }
 
-    @PostMapping("/refresh-auth")
-    public ResponseEntity<AccessTokenDto.Response> refreshAuth(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) throws Exception {
-        AccessTokenDto.Renew renewedAccessToken  = memberService.renewAccessToken(refreshDto);
-        CustomTokenRecord customToken = renewedAccessToken.getCustomTokenRecord();
-        String token = customToken.token();
-        long ttl = customToken.ttl();
-        TimeUnit timeUnit = customToken.timeUnit();
-
-        Cookie tokenCookie = cookieService.getAccessTokenCookie(token, ((int) timeUnit.toSeconds(ttl)));
-        response.addCookie(tokenCookie);
-
-        AccessTokenDto.Response userProfile = AccessTokenDto.Response.builder()
-                .profileImage(renewedAccessToken.getProfileImage())
-                .nickname(renewedAccessToken.getNickname())
-                .hasYoutubeAccess(renewedAccessToken.getHasYoutubeAccess())
-                .role(renewedAccessToken.getRole())
-                .build();
-        return ResponseEntity.ok(userProfile);
+    @PostMapping("/refresh-token")
+    public ResponseEntity<AccessTokenDto.Response> refreshAuth(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) {
+//        AccessTokenDto.Renew renewedAccessToken = memberService.renewAccessToken(refreshDto, response);
+//        CustomTokenRecord customToken = renewedAccessToken.getCustomTokenRecord();
+//
+//        AccessTokenDto.Response userProfile = AccessTokenDto.Response.builder()
+//                .profileImage(renewedAccessToken.getProfileImage())
+//                .nickname(renewedAccessToken.getNickname())
+//                .hasYoutubeAccess(renewedAccessToken.getHasYoutubeAccess())
+//                .role(renewedAccessToken.getRole())
+//                .build();
+//        String token = customToken.token();
+//        long ttl = customToken.ttl();
+//        TimeUnit timeUnit = customToken.timeUnit();
+//
+//        Cookie tokenCookie = cookieService.getAccessTokenCookie(token, ((int) timeUnit.toSeconds(ttl)));
+//        response.addCookie(tokenCookie);
+        return ResponseEntity.ok(memberService.renewAccessToken(refreshDto, response));
     }
 
     @PostMapping("/logout")
