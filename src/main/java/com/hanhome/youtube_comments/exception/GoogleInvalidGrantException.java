@@ -1,4 +1,4 @@
-package com.hanhome.youtube_comments.google.exception;
+package com.hanhome.youtube_comments.exception;
 
 public class GoogleInvalidGrantException extends RuntimeException {
     public GoogleInvalidGrantException(String message) {
