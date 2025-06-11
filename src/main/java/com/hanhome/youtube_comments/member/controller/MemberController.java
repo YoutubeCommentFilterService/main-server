@@ -3,11 +3,8 @@ package com.hanhome.youtube_comments.member.controller;
 import com.hanhome.youtube_comments.member.dto.AccessTokenDto;
 import com.hanhome.youtube_comments.member.dto.IsNewMemberDto;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
-import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.service.MemberService;
-import com.hanhome.youtube_comments.oauth.dto.CustomTokenRecord;
 import com.hanhome.youtube_comments.oauth.dto.RenewAccessTokenDto;
-import com.hanhome.youtube_comments.oauth.provider.JwtTokenProvider;
 import com.hanhome.youtube_comments.oauth.service.CookieService;
 import com.hanhome.youtube_comments.utils.UUIDFromContext;
 import jakarta.servlet.http.Cookie;
@@ -20,7 +17,6 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @RequiredArgsConstructor
 @Controller
@@ -29,7 +25,6 @@ public class MemberController {
     private final MemberService memberService;
     private final CookieService cookieService;
     private final UUIDFromContext uuidFromContext;
-    private final JwtTokenProvider tokenProvider;
 
     @Value("${spring.app.default-domain}")
     private String defaultDomain;
@@ -71,21 +66,7 @@ public class MemberController {
 
     @PostMapping("/refresh-token")
     public ResponseEntity<AccessTokenDto.Response> refreshAuth(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) {
-//        AccessTokenDto.Renew renewedAccessToken = memberService.renewAccessToken(refreshDto, response);
-//        CustomTokenRecord customToken = renewedAccessToken.getCustomTokenRecord();
-//
-//        AccessTokenDto.Response userProfile = AccessTokenDto.Response.builder()
-//                .profileImage(renewedAccessToken.getProfileImage())
-//                .nickname(renewedAccessToken.getNickname())
-//                .hasYoutubeAccess(renewedAccessToken.getHasYoutubeAccess())
-//                .role(renewedAccessToken.getRole())
-//                .build();
-//        String token = customToken.token();
-//        long ttl = customToken.ttl();
-//        TimeUnit timeUnit = customToken.timeUnit();
-//
-//        Cookie tokenCookie = cookieService.getAccessTokenCookie(token, ((int) timeUnit.toSeconds(ttl)));
-//        response.addCookie(tokenCookie);
+
         return ResponseEntity.ok(memberService.renewAccessToken(refreshDto, response));
     }
 
