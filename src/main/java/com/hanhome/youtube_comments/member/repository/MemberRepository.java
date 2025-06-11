@@ -13,4 +13,5 @@ public interface MemberRepository extends JpaRepository<Member, UUID> {
     Optional<Member> findByChannelId(String channelId);
     Page<Member> findByIdNot(UUID id, Pageable pageable);
     void deleteByEmail(String email);
+    Page<Member> findByChannelNameContainingAndIdNot(String channelName, UUID id, Pageable pageable);
 }

@@ -8,7 +8,7 @@ import lombok.Setter;
 
 import java.util.List;
 
-public class GetUserDto {
+public class GetMemberDto {
     @Builder
     @Getter
     @Setter
@@ -17,6 +17,8 @@ public class GetUserDto {
         private Integer page;
         @Min(value = 10, message = "한 페이지의 원소 개수는 10개 이상이어야 합니다.")
         private Integer take;
+
+        private String channelName;
     }
 
     @Builder
