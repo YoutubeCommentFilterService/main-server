@@ -50,9 +50,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(request -> request
                         .requestMatchers(HttpMethod.GET, "/api/member/refresh-token").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/metadata/predict-class").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/youtube/**").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/test/admin/**").hasAnyRole("ADMIN", "DEVELOPER")
+                        .requestMatchers("/api/youtube/**").authenticated()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/test/admin/**").hasAnyRole("ADMIN", "DEVELOPER")
                         .anyRequest().permitAll()
                 )
                 .oauth2Login(oauth -> oauth
@@ -78,7 +78,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(List.of("https://accounts.google.com", frontendRedirectUrl, "http://localhost:5173"));
-        configuration.setAllowedMethods(List.of("GET","POST","PUT","DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET","POST","PUT","DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
 
