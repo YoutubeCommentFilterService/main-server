@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.member.entity;
 
+import com.hanhome.youtube_comments.member.dao.DeleteTargetMemberDAO;
 import com.hanhome.youtube_comments.member.object.MemberRole;
 import com.hanhome.youtube_comments.member.object.SimpleMemberInfo;
 import jakarta.persistence.*;
@@ -60,6 +61,12 @@ public class Member {
                 .imageUrl(profileImage)
                 .role(role)
                 .userId(id.toString())
+                .build();
+    }
+
+    public DeleteTargetMemberDAO toBatchDao() {
+        return DeleteTargetMemberDAO.builder()
+                .id(id)
                 .build();
     }
 }
