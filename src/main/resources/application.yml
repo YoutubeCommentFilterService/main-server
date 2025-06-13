@@ -10,6 +10,12 @@ spring:
       - "classpath:/config/youtube-data.yml"
       - "classpath:/config/mongo.yml"
 
-logging:
-  level:
-    org.springframework.data.mongodb.core.index: DEBUG
+  batch:
+    jdbc:
+      initialize-schema: always
+    job:
+      enabled: false
+
+  sql:
+    init:
+      mode: always
