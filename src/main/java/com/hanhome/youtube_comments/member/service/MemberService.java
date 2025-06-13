@@ -108,12 +108,14 @@ public class MemberService {
         }
     }
 
+    @Transactional
     public boolean acceptSignup(Cookie[] cookies, HttpServletResponse response) {
         String email = getAndRemoveSpecificCookie(response, cookies, "email");
         if ("".equals(email)) return false;
 
         Member member = updatePendingState(email);
         if (member == null) return false;
+        member.setIsPendingState(false);
 
         CustomTokenRecord customAccessToken = tokenProvider.createAccessToken(member.getId(), member.getEmail());
         long ttl = customAccessToken.ttl();

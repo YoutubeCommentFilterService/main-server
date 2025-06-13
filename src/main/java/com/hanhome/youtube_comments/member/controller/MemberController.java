@@ -50,7 +50,7 @@ public class MemberController {
     }
 
     @PostMapping("/reject-signin")
-    public ResponseEntity<?> rejectSignin(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<?> rejectSignup(HttpServletRequest request, HttpServletResponse response) {
         Cookie[] cookies = request.getCookies();
         if (cookies != null) memberService.rejectSignup(cookies, response);
         return ResponseEntity.noContent().build();
