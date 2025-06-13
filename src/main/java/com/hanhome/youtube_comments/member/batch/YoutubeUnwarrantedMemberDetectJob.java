@@ -78,8 +78,6 @@ public class YoutubeUnwarrantedMemberDetectJob {
     public JpaPagingItemReader<Member> memberItemReader() {
         Map<String, Object> parameterValues = new HashMap<>();
         parameterValues.put("cutoffTime", Instant.now().atZone(ZoneOffset.UTC).toLocalDateTime().minusMinutes(30));
-
-        System.out.println(Instant.now().atZone(ZoneOffset.UTC).toLocalDateTime().minusMinutes(30));
         parameterValues.put("role", MemberRole.ADMIN);
 
         return new JpaPagingItemReaderBuilder<Member>()

@@ -217,7 +217,6 @@ public class MemberService {
             Claims claims = tokenProvider.validate(refreshToken);
 
             uuid = claims.getSubject();
-            System.out.println(uuid);
             AccessTokenDto.Renew renewedAccessToken = getRenewedAccessToken(uuid);
 
             CustomTokenRecord customToken = renewedAccessToken.getCustomTokenRecord();

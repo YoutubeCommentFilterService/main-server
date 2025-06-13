@@ -68,7 +68,6 @@ public class AdminService {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public boolean updateUserRole(UpdateUserRoleDto.Request updateDto) {
-        System.out.println(updateDto);
         UUID targetUserId = UUID.fromString(updateDto.getUserId());
         String role = updateDto.getRole();
 
@@ -86,7 +85,6 @@ public class AdminService {
                 .filter(role -> role != MemberRole.UNLINKED)
                 .map(Enum::name)
                 .toList();
-        System.out.println(availableRoles);
         return AvailableRolesDto.Response.builder()
                 .availableRoles(availableRoles)
                 .build();
