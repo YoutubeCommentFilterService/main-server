@@ -3,7 +3,6 @@ package com.hanhome.youtube_comments.google.object.youtube_data_api.playlist_ite
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Getter;
 import lombok.Setter;
-import lombok.ToString;
 
 import java.time.ZonedDateTime;
 import java.util.Map;
@@ -12,12 +11,10 @@ import java.util.Optional;
 @Getter
 @Setter
 @JsonIgnoreProperties(ignoreUnknown = true)
-@ToString
 public class PlaylistItemSnippetResource {
     @Getter
     @Setter
     @JsonIgnoreProperties(ignoreUnknown = true)
-    @ToString
     public static class ThumbnailInfo {
         private String url;
     }
@@ -25,7 +22,6 @@ public class PlaylistItemSnippetResource {
     @Getter
     @Setter
     @JsonIgnoreProperties(ignoreUnknown = true)
-    @ToString
     public static class ResourceId {
         private String videoId;
     }

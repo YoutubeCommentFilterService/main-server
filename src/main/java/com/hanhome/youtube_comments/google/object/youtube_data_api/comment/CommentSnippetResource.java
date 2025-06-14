@@ -8,12 +8,10 @@ import lombok.ToString;
 @Getter
 @Setter
 @JsonIgnoreProperties(ignoreUnknown = true)
-@ToString
 public class CommentSnippetResource {
     @Getter
     @Setter
     @JsonIgnoreProperties(ignoreUnknown = true)
-    @ToString
     public static class AuthorChannelId {
         private String value;
     }

@@ -18,7 +18,6 @@ import java.util.UUID;
 @Entity
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
 public class Member {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
