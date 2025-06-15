@@ -2,6 +2,7 @@ data:
   youtube:
     api-key: ${GCP_API_KEY}
     access-token: ${REDIS_GOOGLE_ACCESS_TOKEN}
+    scope: youtube.force-ssl
 
   predict-server:
     scheme: ${PREDICT_SERVER_SCHEME:http}
