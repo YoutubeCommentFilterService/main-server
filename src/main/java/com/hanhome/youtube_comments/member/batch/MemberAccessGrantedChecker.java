@@ -24,7 +24,7 @@ public class MemberAccessGrantedChecker {
         this.removeAccessNotGrantedMemberJob = removeAccessNotGrantedMemberJob;
     }
 
-    @Scheduled(cron = "0 0 1,13 * * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 30 1,13 * * *", zone = "Asia/Seoul")
     public void run() {
         try {
             String dynamicJobName = "removeUnwarrantedMember-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("mm-ss-SSS"));
