@@ -1,15 +1,14 @@
 package com.hanhome.youtube_comments.member.batch;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hanhome.youtube_comments.exception.YoutubeAccessForbiddenException;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.token.OAuthTokenScopeResponse;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.token.RenewAccessTokenResponse;
 import com.hanhome.youtube_comments.member.dao.DeleteTargetMemberDAO;
 import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.object.MemberRole;
 import com.hanhome.youtube_comments.member.repository.MemberRepository;
 import com.hanhome.youtube_comments.utils.AESUtil;
 import jakarta.persistence.EntityManagerFactory;
-import lombok.Getter;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -29,9 +28,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -45,8 +42,11 @@ public class YoutubeUnwarrantedMemberDetectJob {
     private final RestTemplate restTemplate;
 
     private final static String googleOAuthTokenInfoUrl = "https://www.googleapis.com/oauth2/v1/tokeninfo?access_token={accessToken}";
-    private final static String googleOAuthRenewAccessTokenUrl = "https://oauth2.googleapis.com/token";
-    private final static String youtubeScope = "youtube.force-ssl";
+
+    @Value("${spring.security.oauth2.provider.google.token-uri}")
+    private static String googleOAuthRenewAccessTokenUrl;
+    @Value("${data.youtube.scope}")
+    private static String youtubeScope;
 
     private final Map<String, Object> baseBody;
     private final static Integer maxChunkPage = 100;
@@ -75,7 +75,7 @@ public class YoutubeUnwarrantedMemberDetectJob {
 
     @Bean
     @StepScope
-    public JpaPagingItemReader<Member> memberItemReader() {
+    public JpaPagingItemReader<Member> memberItemReaderWithWhere() {
         Map<String, Object> parameterValues = new HashMap<>();
         parameterValues.put("cutoffTime", Instant.now().atZone(ZoneOffset.UTC).toLocalDateTime().minusMinutes(30));
         parameterValues.put("role", MemberRole.ADMIN);
@@ -90,7 +90,7 @@ public class YoutubeUnwarrantedMemberDetectJob {
     }
 
     @Bean
-    public ItemProcessor<Member, DeleteTargetMemberDAO> memberItemProcessor() {
+    public ItemProcessor<Member, DeleteTargetMemberDAO> memberGoogleGrantRevokeProcessor() {
         return member -> {
             Map<String, Object> requestBody = new HashMap<>(baseBody);
             String googleAccessToken = null;
@@ -103,9 +103,9 @@ public class YoutubeUnwarrantedMemberDetectJob {
                         RenewAccessTokenResponse.class
                 ).getAccessToken();
 
-                OAuthTokenScopesResponse scopeResponse = restTemplate.getForObject(
+                OAuthTokenScopeResponse scopeResponse = restTemplate.getForObject(
                         googleOAuthTokenInfoUrl,
-                        OAuthTokenScopesResponse.class,
+                        OAuthTokenScopeResponse.class,
                         googleAccessToken
                 );
                 assert scopeResponse != null;
@@ -121,7 +121,7 @@ public class YoutubeUnwarrantedMemberDetectJob {
     }
 
     @Bean
-    public ItemWriter<DeleteTargetMemberDAO> memberItemWriter() {
+    public ItemWriter<DeleteTargetMemberDAO> deleteMemberAtDB() {
         return members -> {
             for (DeleteTargetMemberDAO targetMember : members) {
                 memberRepository.deleteById(targetMember.getId());
@@ -131,9 +131,9 @@ public class YoutubeUnwarrantedMemberDetectJob {
 
     @Bean
     public Step checkUnwarrantedMemberStep(
-            ItemReader<Member> memberItemReader,
-            ItemProcessor<Member, DeleteTargetMemberDAO> memberItemProcessor,
-            ItemWriter<DeleteTargetMemberDAO> memberItemWriter
+            @Qualifier("memberItemReaderWithWhere") ItemReader<Member> memberItemReader,
+            @Qualifier("memberGoogleGrantRevokeProcessor") ItemProcessor<Member, DeleteTargetMemberDAO> memberItemProcessor,
+            @Qualifier("deleteMemberAtDB") ItemWriter<DeleteTargetMemberDAO> memberItemWriter
     ) {
         return new StepBuilder("checkUnwarrantedMemberStep", jobRepository)
                 .<Member, DeleteTargetMemberDAO>chunk(maxChunkPage, transactionManager)
@@ -148,23 +148,5 @@ public class YoutubeUnwarrantedMemberDetectJob {
         return new JobBuilder("removeUnlinkedMemberJob", jobRepository)
                 .start(processMemberStep)
                 .build();
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    @Getter
-    private static class OAuthTokenScopesResponse {
-        private String scope;
-
-        public boolean hasYoutubeAccess() {
-            return Arrays.stream(scope.split(" "))
-                    .anyMatch(s -> s.endsWith(youtubeScope));
-        }
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    @Getter
-    private static class RenewAccessTokenResponse {
-        @JsonProperty("access_token")
-        private String accessToken;
     }
 }
