@@ -76,6 +76,15 @@ public class GoogleAPIService {
             HttpMethod httpMethod,
             String endpoint,
             Map<String, Object> queries,
+            Class<T> toMono
+    ) throws Exception {
+        return getObjectFromYoutubeDataAPI(httpMethod, endpoint, queries, null, toMono, Mono::just, null);
+    }
+
+    public <T> T getObjectFromYoutubeDataAPI(
+            HttpMethod httpMethod,
+            String endpoint,
+            Map<String, Object> queries,
             UUID uuid,
             Class<T> toMono
     ) throws Exception {
@@ -178,9 +187,11 @@ public class GoogleAPIService {
 
 
     private void setCommonHeader(HttpHeaders headers, UUID uuid) {
-        String googleAccessToken = (String) redisService.get(generateGoogleAccessTokenKey(uuid));
-        headers.add("Authorization", "Bearer " + googleAccessToken);
-        headers.add("Accept", "application/json");
+        if (uuid != null) {
+            String googleAccessToken = (String) redisService.get(generateGoogleAccessTokenKey(uuid));
+            headers.add("Authorization", "Bearer " + googleAccessToken);
+            headers.add("Accept", "application/json");
+        }
     }
 
     public String takeNewGoogleAccessToken(UUID uuid) throws Exception {

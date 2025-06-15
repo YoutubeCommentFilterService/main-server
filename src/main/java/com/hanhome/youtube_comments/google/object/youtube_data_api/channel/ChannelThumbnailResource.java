@@ -1,6 +1,7 @@
 package com.hanhome.youtube_comments.google.object.youtube_data_api.channel;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -18,5 +19,6 @@ public class ChannelThumbnailResource {
         private Integer height;
     }
 
-    private Details medium;
+    @JsonProperty("default")
+    private Details defaultThumbnail;
 }
