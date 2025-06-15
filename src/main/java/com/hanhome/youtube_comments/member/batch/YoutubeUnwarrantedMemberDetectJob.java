@@ -44,9 +44,7 @@ public class YoutubeUnwarrantedMemberDetectJob {
     private final static String googleOAuthTokenInfoUrl = "https://www.googleapis.com/oauth2/v1/tokeninfo?access_token={accessToken}";
 
     @Value("${spring.security.oauth2.provider.google.token-uri}")
-    private static String googleOAuthRenewAccessTokenUrl;
-    @Value("${data.youtube.scope}")
-    private static String youtubeScope;
+    private String googleOAuthRenewAccessTokenUrl;
 
     private final Map<String, Object> baseBody;
     private final static Integer maxChunkPage = 100;
