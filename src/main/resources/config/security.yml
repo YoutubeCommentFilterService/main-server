@@ -2,6 +2,7 @@ spring:
   app:
     redirect-url: ${FRONTEND_REDIRECT_URL:http://localhost:5173}
     default-domain: ${DEFAULT_DOMAIN:localhost}
+    backend-url: ${BACKEND_HOST:http://localhost:8080}
   security:
     oauth2:
       client:

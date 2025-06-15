@@ -16,6 +16,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @RequiredArgsConstructor
@@ -28,6 +30,22 @@ public class MemberController {
 
     @Value("${spring.app.default-domain}")
     private String defaultDomain;
+
+    @Value("${spring.app.backend-url}")
+    private String backendUrl;
+
+    @GetMapping("/resync")
+    public ResponseEntity<Map<String, String>> resyncGoogleAccount(HttpServletRequest request, HttpServletResponse response) {
+        UUID uuid = uuidFromContext.getUUID();
+        memberService.logout(uuid);
+
+        Cookie cookie = cookieService.removeAccessTokenCookie();
+        response.addCookie(cookie);
+
+        Map<String, String> body = new HashMap<>();
+        body.put("redirectTo", backendUrl + "/oauth2/authorize/google");
+        return ResponseEntity.ok(body);
+    }
 
     @GetMapping("/check-new")
     public ResponseEntity<IsNewMemberDto.Response> getIsNewMember(HttpServletRequest request) {
