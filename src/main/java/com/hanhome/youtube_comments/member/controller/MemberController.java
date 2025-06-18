@@ -1,6 +1,5 @@
 package com.hanhome.youtube_comments.member.controller;
 
-import com.hanhome.youtube_comments.member.dto.AccessTokenDto;
 import com.hanhome.youtube_comments.member.dto.IsNewMemberDto;
 import com.hanhome.youtube_comments.member.dto.RefreshTokenDto;
 import com.hanhome.youtube_comments.member.service.MemberService;
@@ -13,7 +12,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -21,7 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RequiredArgsConstructor
-@Controller
+@RestController
 @RequestMapping("/api/member")
 public class MemberController {
     private final MemberService memberService;
@@ -82,9 +80,8 @@ public class MemberController {
         return ResponseEntity.ok(refreshTokenDto);
     }
 
-    @PostMapping("/refresh-token")
-    public ResponseEntity<AccessTokenDto.Response> refreshAuth(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) {
-
+    @PostMapping("/renew-token")
+    public ResponseEntity<RefreshTokenDto> refreshAuth(HttpServletResponse response, @RequestBody RenewAccessTokenDto refreshDto) {
         return ResponseEntity.ok(memberService.renewAccessToken(refreshDto, response));
     }
 
