@@ -37,7 +37,7 @@ public class JwtTokenProvider {
                 .signWith(key)
                 .compact();
 
-        return new CustomTokenRecord(accessInMillisec, token, TimeUnit.MILLISECONDS);
+        return new CustomTokenRecord(token, TimeUnit.MILLISECONDS, accessInMillisec);
     }
 
     public CustomTokenRecord createRefreshToken(UUID uid) {
@@ -51,7 +51,7 @@ public class JwtTokenProvider {
                 .signWith(key)
                 .compact();
 
-        return new CustomTokenRecord(refreshInMilliSec, token, TimeUnit.MILLISECONDS);
+        return new CustomTokenRecord(token, TimeUnit.MILLISECONDS, refreshInMilliSec);
     }
 
     public Claims validate(String token) {
