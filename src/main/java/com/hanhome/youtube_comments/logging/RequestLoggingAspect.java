@@ -3,15 +3,16 @@ package com.hanhome.youtube_comments.logging;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
+import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.lang.reflect.Method;
 
@@ -19,6 +20,12 @@ import java.lang.reflect.Method;
 @Component
 @Slf4j
 public class RequestLoggingAspect {
+    @Autowired
+    private HttpServletRequest request;
+
+    @Pointcut("within(@org.springframework.web.bind.annotation.RestController *)")
+    public void controllerPointcut() {}
+
     @Pointcut("execution(* com.hanhome.youtube_comments..service..*(..))")
     public void servicePointcut() {}
 
@@ -28,17 +35,22 @@ public class RequestLoggingAspect {
     )
     public void notIncludeExecution() {}
 
+    @Before("controllerPointcut()")
+    public void logBefore(JoinPoint joinPoint) {
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        String methodName = signature.getName();
+        String className = signature.getDeclaringTypeName();
+        String httpMethod = request.getMethod();
+        String requestURI = request.getRequestURI();
+
+        log.info("[Request] {} {} - {}.{}", httpMethod, requestURI, className, methodName);
+    }
+
     @Around("servicePointcut() && !notIncludeExecution()")
     public Object aroundLog(ProceedingJoinPoint joinPoint) throws Throwable {
-        ServletRequestAttributes requestAttrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         String sessionId = "";
-        if (requestAttrs != null) {
-            HttpServletRequest request = requestAttrs.getRequest();
-            HttpSession session = request.getSession(false);
-            if (session != null) {
-                sessionId = session.getId();
-            }
-        }
+        HttpSession session = request.getSession(false);
+        if (session != null) sessionId = session.getId();
         sessionId = maskSensitiveData(sessionId);
 
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
@@ -53,8 +65,7 @@ public class RequestLoggingAspect {
         try {
             Object returnObj = joinPoint.proceed();
             Object printObj = null;
-            if (returnObj instanceof ResponseEntity) {
-                ResponseEntity<?> responseEntity = (ResponseEntity<?>) returnObj;
+            if (returnObj instanceof ResponseEntity<?> responseEntity) {
                 printObj = responseEntity.getBody();
             } else {
                 printObj = returnObj;
