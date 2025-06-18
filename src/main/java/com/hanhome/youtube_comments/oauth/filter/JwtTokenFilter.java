@@ -62,12 +62,18 @@ public class JwtTokenFilter extends OncePerRequestFilter {
     }
 
     private boolean shouldSkipFilter(HttpServletRequest request) {
-        String[] publicUrls = {"/api/metadata/class", "/api/member/refresh-token",
-                "/api/member/check-new", "/api/member/accept-signin", "/api/member/reject-signin",
-                "/api/csrf-token"
-        };
+        String[] getUrls = {"/api/member/check-new", "/api/csrf-token"};
+        String[] postUrls = {"/api/member/accept-signin", "/api/member/reject-signin", "/api/member/refresh-token"};
+
         String path = request.getRequestURI();
-        return Arrays.stream(publicUrls).anyMatch(path::startsWith);
+        String fromMethod = request.getMethod();
+
+        String[] targetUrls = "GET".equals(fromMethod)
+                ? getUrls
+                : "POST".equals(fromMethod)
+                    ? postUrls
+                    : new String[0];
+        return Arrays.stream(targetUrls).anyMatch(path::startsWith);
     }
 
     private void sendUnauthorizedError(HttpServletResponse response, String message) throws IOException {
