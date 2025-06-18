@@ -228,6 +228,7 @@ public class MemberService {
             String redisRefreshTokenKey = getRefreshTokenRedisKey(uuid);
 
             String storedRefreshToken = (String) redisService.get(redisRefreshTokenKey);
+            if (storedRefreshToken == null) throw new InvalidJWTTokenException("저장된 Token이 존재하지 않습니다.");
             if (!storedRefreshToken.equals(refreshToken)) throw new InvalidJWTTokenException("올바르지 않은 Agent입니다.");
 
             CustomTokenRecord customToken = renewedAccessToken.getCustomTokenRecord();
