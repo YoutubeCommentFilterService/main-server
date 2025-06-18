@@ -22,6 +22,7 @@ import com.hanhome.youtube_comments.redis.service.RedisService;
 import com.hanhome.youtube_comments.utils.AESUtil;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,10 +30,13 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -191,13 +195,15 @@ public class MemberService {
         Member member = memberRepository.findById(uuid)
                 .orElseThrow(() -> new RuntimeException("회원가입을 먼저 해주세요"));
 
-        String refreshToken = (String) redisService.get("REFRESH:" + uuid.toString());
+        String redisRefreshTokenKey = getRefreshTokenRedisKey(uuid);
+
+        String refreshToken = (String) redisService.get(redisRefreshTokenKey);
         if (refreshToken == null) {
             CustomTokenRecord customToken = tokenProvider.createRefreshToken(uuid);
             refreshToken = customToken.token();
             long ttl = customToken.ttl();
             TimeUnit timeUnit = customToken.timeUnit();
-            redisService.save("REFRESH:" + uuid.toString(), refreshToken, ttl, timeUnit);
+            redisService.save(redisRefreshTokenKey, refreshToken, ttl, timeUnit);
         }
 
         return RefreshTokenDto.builder()
@@ -209,15 +215,20 @@ public class MemberService {
                 .build();
     }
 
-    public AccessTokenDto.Response renewAccessToken(RenewAccessTokenDto renewDto, HttpServletResponse response) {
+    public RefreshTokenDto renewAccessToken(RenewAccessTokenDto renewDto, HttpServletResponse response) {
         String refreshToken = renewDto.getRefreshToken();
 
-        String uuid = null;
+        UUID uuid = null;
         try {
             Claims claims = tokenProvider.validate(refreshToken);
 
-            uuid = claims.getSubject();
+            uuid = UUID.fromString(claims.getSubject());
             AccessTokenDto.Renew renewedAccessToken = getRenewedAccessToken(uuid);
+
+            String redisRefreshTokenKey = getRefreshTokenRedisKey(uuid);
+
+            String storedRefreshToken = (String) redisService.get(redisRefreshTokenKey);
+            if (!storedRefreshToken.equals(refreshToken)) throw new InvalidJWTTokenException("올바르지 않은 Agent입니다.");
 
             CustomTokenRecord customToken = renewedAccessToken.getCustomTokenRecord();
             String token = customToken.token();
@@ -227,7 +238,14 @@ public class MemberService {
             Cookie tokenCookie = cookieService.getAccessTokenCookie(token, ((int) timeUnit.toSeconds(ttl)));
             response.addCookie(tokenCookie);
 
-            return AccessTokenDto.Response.builder()
+            CustomTokenRecord newRefreshToken = tokenProvider.createRefreshToken(uuid);
+            token = newRefreshToken.token();
+            ttl = newRefreshToken.ttl();
+            timeUnit = newRefreshToken.timeUnit();
+            redisService.save(redisRefreshTokenKey, token, ttl, timeUnit);
+
+            return RefreshTokenDto.builder()
+                    .refreshToken(newRefreshToken.token())
                     .profileImage(renewedAccessToken.getProfileImage())
                     .nickname(renewedAccessToken.getNickname())
                     .hasYoutubeAccess(renewedAccessToken.getHasYoutubeAccess())
@@ -240,15 +258,27 @@ public class MemberService {
         }
     }
 
-    private AccessTokenDto.Renew getRenewedAccessToken(String uuid) {
-        Member member = memberRepository.findById(UUID.fromString(uuid))
+    private String getRefreshTokenRedisKey(String uuid) {
+        HttpServletRequest request = ((ServletRequestAttributes) Objects.requireNonNull(RequestContextHolder.getRequestAttributes())).getRequest();
+        String agent = Optional.ofNullable(request.getHeader("User-Agent")).orElse("unknown");
+        int hashedValue = agent.hashCode();
+
+        return "REFRESH:" + uuid + ":" + hashedValue;
+    }
+
+    private String getRefreshTokenRedisKey(UUID uuid) {
+        return getRefreshTokenRedisKey(uuid.toString());
+    }
+
+    private AccessTokenDto.Renew getRenewedAccessToken(UUID uuid) {
+        Member member = memberRepository.findById(uuid)
                 .orElseThrow(() -> new UserNotFountException("User Not Found!"));
         return AccessTokenDto.Renew.builder()
                 .customTokenRecord(tokenProvider.createAccessToken(member.getId(), member.getEmail()))
                 .nickname(member.getChannelName())
                 .profileImage(member.getProfileImage())
                 .hasYoutubeAccess(member.getHasYoutubeAccess())
-                .role(member.getRole().name())
+                .role(member.getRole())
                 .build();
     }
 
