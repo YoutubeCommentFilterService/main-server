@@ -20,7 +20,7 @@ import java.util.Map;
 @Component
 @StepScope
 public class ChannelIdItemReader implements ItemReader<String> {
-    @Value("${spring.data.keys.update-profile-job}")
+    @Value("${data.keys.update-profile-job}")
     private String HASH_KEY;
 
     private final RedisTemplate<String, String> redisTemplate;

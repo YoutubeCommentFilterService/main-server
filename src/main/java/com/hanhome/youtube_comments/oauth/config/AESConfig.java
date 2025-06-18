@@ -6,11 +6,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import javax.crypto.spec.SecretKeySpec;
-import java.util.Base64;
 
 @Configuration
 public class AESConfig {
-    @Value("${spring.security.cipher.secret-key}")
+    @Value("${data.cipher.secret-key}")
     private String secretKey;
 
     @Bean

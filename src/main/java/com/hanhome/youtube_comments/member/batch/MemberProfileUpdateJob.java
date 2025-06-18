@@ -50,7 +50,7 @@ public class MemberProfileUpdateJob {
     private final Map<String, Object> baseParam;
     private final ObjectMapper objectMapper;
 
-    @Value("${spring.data.keys.update-profile-job}")
+    @Value("${data.keys.update-profile-job}")
     private String HASH_KEY;
 
     private static final int maxChunkPage = 50;

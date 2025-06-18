@@ -5,6 +5,6 @@ spring:
     timeout: 2000
     database: 9 # youtube를 SHA-256 해시 하여 MOD 16한 결과
 
-  data:
-    keys:
-      update-profile-job: youtube_channel_ids_hset
+data:
+  keys:
+    update-profile-job: youtube_channel_ids_hset

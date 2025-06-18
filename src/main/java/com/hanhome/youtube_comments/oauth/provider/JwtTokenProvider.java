@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 
 @Component
 public class JwtTokenProvider {
-    @Value("${jwt.secret-key}")
+    @Value("${data.jwt.secret-key}")
     private String secretKey;
 
     private final long accessInMillisec = 1000 * 60 * 60; // 1 hours
