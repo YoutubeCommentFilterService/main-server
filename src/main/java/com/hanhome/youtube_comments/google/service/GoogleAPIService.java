@@ -3,7 +3,6 @@ package com.hanhome.youtube_comments.google.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.hanhome.youtube_comments.exception.*;
 import com.hanhome.youtube_comments.google.dto.RenewGoogleTokenDto;
-import com.hanhome.youtube_comments.google.object.youtube_data_api.common.YoutubeCommonPagination;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.token.RenewAccessTokenErrorResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.token.RenewAccessTokenResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.token.RequestErrorResponse;
@@ -150,6 +149,8 @@ public class GoogleAPIService {
                                                     Mono.<Throwable>error(new GoogleInvalidGrantException(errorMessage));
                                             case "insufficientPermissions" ->  // "plz check permissions!!!!"
                                                     Mono.<Throwable>error(new YoutubeAccessForbiddenException(errorMessage));
+                                            case "notFound" ->
+                                                    Mono.<Throwable>error(new RequestedEntityNotFoundException(errorMessage));
                                             default ->
                                                     Mono.<Throwable>error(new RuntimeException("Unknown Error: " + errorMessage));
                                         };
