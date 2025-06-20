@@ -1,27 +1,31 @@
 package com.hanhome.youtube_comments.google.object.youtube_data_api.video;
 
 import com.hanhome.youtube_comments.member.object.YoutubeAccountDetail;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 @Getter
+@AllArgsConstructor
+@NoArgsConstructor
 public class VideoFlatMap implements Serializable {
-    private final String videoId;
-    private final String title;
-    private final String description;
-    private final String tags;
-    private final String publishedAt;
-    private final String thumbnailUrl;
-    private final String viewCount;
-//    private final String likeCount;
-//    private final String dislikeCount;
-//    private final String commentCount;
+    private String videoId;
+    private String title;
+//    private String description;
+    private String tags;
+    private String publishedAt;
+    private String thumbnailUrl;
+    private String viewCount;
+//    private String likeCount;
+//    private String dislikeCount;
+//    private String commentCount;
 
-    private final String channelId;
-    private final String channelTitle;
+    private String channelId;
+    private String channelTitle;
     private String channelHandler;
     private String channelThumbnailUrl = "";
     private String subscriberCount;
@@ -31,7 +35,7 @@ public class VideoFlatMap implements Serializable {
         VideoStatisticsResource statistics = resource.getStatistics();
         videoId = resource.getId();
         title = replaceSpacer(snippet.getLocalized().getTitle());
-        description = replaceSpacer(snippet.getLocalized().getDescription());
+//        description = replaceSpacer(snippet.getLocalized().getDescription());
         publishedAt = snippet.getPublishedAt();
         thumbnailUrl = snippet.getThumbnail();
 
