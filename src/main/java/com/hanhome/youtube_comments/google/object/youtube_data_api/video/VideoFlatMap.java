@@ -45,7 +45,7 @@ public class VideoFlatMap implements Serializable {
         List<String> tags = snippet.getTags() != null
                 ? snippet.getTags().stream().map(tag -> "#"+tag).toList()
                 : new ArrayList<>();
-        tags = tags.subList(0, Math.min(tags.size() , 20));
+        tags = tags.stream().map(tag -> tag.replace(" ", "_")).toList();
         this.tags = String.join(" ", tags);
         channelThumbnailUrl = "";
         channelHandler = "";
