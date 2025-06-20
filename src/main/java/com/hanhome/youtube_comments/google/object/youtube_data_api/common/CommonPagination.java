@@ -7,7 +7,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class YoutubeCommonPagination {
+public class CommonPagination {
     @Getter
     @Setter
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -15,12 +15,12 @@ public class YoutubeCommonPagination {
         private Integer totalResults;
         private Integer resultsPerPage;
     }
-    private String nextPageToken;
-    private PageInfo pageInfo;
+    protected String nextPageToken;
+    protected PageInfo pageInfo;
 
     public Integer getTotalResults() { return pageInfo.getTotalResults(); }
 
-    public YoutubeCommonPagination() {
+    public CommonPagination() {
         nextPageToken = null;
     }
 }
