@@ -13,6 +13,9 @@ import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.lang.reflect.Method;
 
@@ -49,8 +52,12 @@ public class RequestLoggingAspect {
     @Around("servicePointcut() && !notIncludeExecution()")
     public Object aroundLog(ProceedingJoinPoint joinPoint) throws Throwable {
         String sessionId = "";
-        HttpSession session = request.getSession(false);
-        if (session != null) sessionId = session.getId();
+        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+        if (attrs instanceof ServletRequestAttributes servletRequestAttributes) {
+            HttpServletRequest request = servletRequestAttributes.getRequest();
+            HttpSession session = request.getSession(false);
+            if (session != null) sessionId = session.getId();
+        }
         sessionId = maskSensitiveData(sessionId);
 
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
