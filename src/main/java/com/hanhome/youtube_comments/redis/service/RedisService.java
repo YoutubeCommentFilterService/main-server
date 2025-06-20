@@ -1,5 +1,6 @@
 package com.hanhome.youtube_comments.redis.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -13,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class RedisService {
     private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper objectMapper;
 
     public void save(String key, Object value) {
         redisTemplate.opsForValue().set(key, value);
@@ -28,6 +30,11 @@ public class RedisService {
 
     public Object get(String key) {
         return redisTemplate.opsForValue().get(key);
+    }
+
+    public <T> T get(String key, Class<T> clazz) {
+        Object obj = redisTemplate.opsForValue().get(key);
+        return objectMapper.convertValue(obj, clazz);
     }
 
     public void remove(String key) {
