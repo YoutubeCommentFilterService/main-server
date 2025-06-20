@@ -12,7 +12,6 @@ import jakarta.persistence.EntityManagerFactory;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.StepContribution;
@@ -210,7 +209,6 @@ public class MemberProfileUpdateJob {
 
 
     @Getter
-    @ToString
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ChannelResourceFlatted {
