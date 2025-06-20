@@ -1,4 +1,4 @@
-package com.hanhome.youtube_comments.member.batch;
+package com.hanhome.youtube_comments.batch;
 
 import com.hanhome.youtube_comments.exception.YoutubeAccessForbiddenException;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.token.OAuthTokenScopeResponse;

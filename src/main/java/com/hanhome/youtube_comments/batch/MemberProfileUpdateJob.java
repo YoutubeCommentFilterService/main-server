@@ -1,4 +1,4 @@
-package com.hanhome.youtube_comments.member.batch;
+package com.hanhome.youtube_comments.batch;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -1,4 +1,4 @@
-package com.hanhome.youtube_comments.member.batch;
+package com.hanhome.youtube_comments.batch;
 
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.configuration.annotation.StepScope;

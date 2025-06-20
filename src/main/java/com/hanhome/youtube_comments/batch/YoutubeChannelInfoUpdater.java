@@ -1,4 +1,4 @@
-package com.hanhome.youtube_comments.member.batch;
+package com.hanhome.youtube_comments.batch;
 
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParameters;
@@ -12,28 +12,28 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 @Component
-public class MemberAccessGrantedChecker {
+public class YoutubeChannelInfoUpdater {
     private final JobLauncher jobLauncher;
-    private final Job removeAccessNotGrantedMemberJob;
+    private final Job updateMemberProfileJob;
 
-    public MemberAccessGrantedChecker(
+    public YoutubeChannelInfoUpdater(
             JobLauncher jobLauncher,
-            @Qualifier("removeUnlinkedMemberJob") Job removeAccessNotGrantedMemberJob
+            @Qualifier("updateMemberProfileJob") Job updateMemberProfileJob
     ) {
         this.jobLauncher = jobLauncher;
-        this.removeAccessNotGrantedMemberJob = removeAccessNotGrantedMemberJob;
+        this.updateMemberProfileJob = updateMemberProfileJob;
     }
 
-    @Scheduled(cron = "0 30 1,13 * * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 0 1 * * 1", zone = "Asia/Seoul")
     public void run() {
         try {
-            String dynamicJobName = "removeUnwarrantedMember-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("mm-ss-SSS"));
+            String dynamicJobName = "updateChannelInfo-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("mm-ss-SSS"));
 
             JobParameters jobParameters = new JobParametersBuilder()
                     .toJobParameters();
 
             jobLauncher.run(
-                    removeAccessNotGrantedMemberJob,
+                    updateMemberProfileJob,
                     jobParameters
             );
         } catch (Exception e) {
