@@ -80,6 +80,16 @@ public class GoogleAPIService {
         return getObjectFromYoutubeDataAPI(httpMethod, endpoint, queries, null, toMono, Mono::just, null);
     }
 
+    public <T, R> R getObjectFromYoutubeDataAPI(
+            HttpMethod httpMethod,
+            String endpoint,
+            Map<String, Object> queries,
+            Class<T> toMono,
+            Function<T, Mono<R>> bodyProcessor
+    ) throws Exception {
+        return getObjectFromYoutubeDataAPI(httpMethod, endpoint, queries, null, toMono, bodyProcessor, null);
+    }
+
     public <T> T getObjectFromYoutubeDataAPI(
             HttpMethod httpMethod,
             String endpoint,
