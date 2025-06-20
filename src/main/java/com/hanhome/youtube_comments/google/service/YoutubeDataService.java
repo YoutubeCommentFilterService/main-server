@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.hanhome.youtube_comments.common.response.PredictCommonResponse;
+import com.hanhome.youtube_comments.exception.RequestedEntityNotFoundException;
 import com.hanhome.youtube_comments.google.dto.*;
 import com.hanhome.youtube_comments.exception.RenewAccessTokenFailedException;
 import com.hanhome.youtube_comments.exception.YoutubeAccessForbiddenException;
@@ -16,7 +17,6 @@ import com.hanhome.youtube_comments.google.object.predict.PredictionResultResour
 import com.hanhome.youtube_comments.google.object.predict.PredictionInputResource;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.channel.ChannelContentDetailsResource;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.channel.ChannelListResponse;
-import com.hanhome.youtube_comments.google.object.youtube_data_api.channel.ChannelResource;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.channel.ChannelSnippetResource;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.comment.CommentListResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.comment.CommentResource;
@@ -24,6 +24,11 @@ import com.hanhome.youtube_comments.google.object.youtube_data_api.comment.Comme
 import com.hanhome.youtube_comments.google.object.youtube_data_api.comment_thread.*;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.playlist_items.PlaylistItemListResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.playlist_items.PlaylistItemSnippetResource;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.video.VideoFlatMap;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.video.VideoListResponse;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.video_category.VideoCategoryFlatMap;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.video_category.VideoCategoryListResponse;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.video_category.VideoCategoryResource;
 import com.hanhome.youtube_comments.member.entity.Member;
 import com.hanhome.youtube_comments.member.object.YoutubeAccountDetail;
 import com.hanhome.youtube_comments.redis.service.RedisService;
@@ -39,6 +44,7 @@ import org.springframework.web.util.UriBuilder;
 import reactor.core.publisher.Mono;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -94,7 +100,8 @@ public class YoutubeDataService {
                 })
                 .bodyToMono(ChannelListResponse.class)
                 .flatMap(this::generateYoutubeChannelDetail)
-                .block();
+                .block()
+                .get(0);
     }
 
     public YoutubeAccountDetail getYoutubeAccountDetail(UUID uuid) throws Exception {
@@ -109,21 +116,38 @@ public class YoutubeDataService {
                 uuid,
                 ChannelListResponse.class,
                 this::generateYoutubeChannelDetail
+        ).get(0);
+    }
+
+    public List<YoutubeAccountDetail> getMultiYoutubeAccountDetail(List<String> channelIds) throws Exception {
+        Map<String, Object> queries = new HashMap<>();
+        queries.put("part", "snippet,contentDetails,statistics");
+        queries.put("id", String.join(",", channelIds));
+
+        return googleAPIService.getObjectFromYoutubeDataAPI(
+                HttpMethod.GET,
+                "channels",
+                queries,
+                ChannelListResponse.class,
+                this::generateYoutubeChannelDetail
         );
     }
 
-    private Mono<YoutubeAccountDetail> generateYoutubeChannelDetail(ChannelListResponse channelListResponse) {
-        ChannelResource channelResource = channelListResponse.getItems().get(0);
-        ChannelSnippetResource channelSnippetResource = channelResource.getSnippet();
-        ChannelContentDetailsResource channelContentDetailsResource = channelResource.getContentDetails();
-
-        return Mono.just(YoutubeAccountDetail.builder()
-                .channelId(channelResource.getId())
-                .playlistId(channelContentDetailsResource.getRelatedPlaylists().getUploads())
-                .channelHandler(channelSnippetResource.getCustomUrl())
-//                .channelName(channelSnippetResource.getTitle())
-//                .thumbnailUrl(channelSnippetResource.getThumbnails().getMedium().getUrl())
-                .build());
+    private Mono<List<YoutubeAccountDetail>> generateYoutubeChannelDetail(ChannelListResponse channelListResponse) {
+        return Mono.just(
+                channelListResponse.getItems().stream().map(resource -> {
+                    ChannelSnippetResource channelSnippetResource = resource.getSnippet();
+                    ChannelContentDetailsResource channelContentDetailsResource = resource.getContentDetails();
+                    return YoutubeAccountDetail.builder()
+                            .channelId(resource.getId())
+                            .playlistId(channelContentDetailsResource.getRelatedPlaylists().getUploads())
+                            .channelHandler(channelSnippetResource.getCustomUrl())
+                            .channelName(channelSnippetResource.getTitle())
+                            .thumbnailUrl(channelSnippetResource.getThumbnail())
+                            .subscriberCount(resource.getStatistics().getSubscriberCount())
+                            .build();
+                }).toList()
+        );
     }
 
     public GetVideosDto.Response getVideosByPlaylist(GetVideosDto.Request request, Member member) throws Exception {
@@ -177,6 +201,101 @@ public class YoutubeDataService {
                 .isLast(isLast ? "Y" : "N")
                 .items(resultVideoResources)
                 .build();
+    }
+
+    // TODO: 추후 redis로 이동하여 redis에서 받아오도록 수정
+//    @Cacheable(value = "hotVideos")
+    public GetHotVideosDto.Response getHotVideos() throws Exception {
+        Set<String> channelIdSet = new HashSet<>();
+        Map<String, List<VideoFlatMap>> flattedMap = new HashMap<>();
+        Map<String, Object> queries = new HashMap<>();
+        queries.put("chart", "mostPopular");
+        queries.put("part", "snippet,statistics");
+        queries.put("regionCode", "KR");
+        queries.put("hl", "ko");
+        queries.put("maxResults", 50);
+
+        // 1. 전체 인급동
+        queries.remove("videoCategoryId");
+        appendDatas(queries, "0:전체", flattedMap, channelIdSet);
+
+        // 2. 개별 카테고리 인급동
+        List<VideoCategoryFlatMap> videoCategoryIds = getVideoCategoryId();
+        for (VideoCategoryFlatMap category : videoCategoryIds) {
+            try {
+                queries.put("videoCategoryId", category.getId());
+                appendDatas(queries, category.toString(), flattedMap, channelIdSet);
+            } catch (RequestedEntityNotFoundException ignored) {}
+        }
+
+        String now = Instant.now().toString();
+
+        List<String> channelIdList = new ArrayList<>(channelIdSet);
+        int batchSize = 50;
+        Map<String, YoutubeAccountDetail.HandlerUrlMapper> accountDetails = IntStream.iterate(0, i -> i < channelIdList.size(), i -> i + batchSize)
+                .mapToObj(i -> {
+                    List<String> batch = channelIdList.subList(i, Math.min(i + batchSize, channelIdList.size()));
+                    try {
+                        return getMultiYoutubeAccountDetail(batch);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                })
+                .flatMap(List::stream)
+                .collect(Collectors.toMap(
+                        YoutubeAccountDetail::getChannelId,
+                        YoutubeAccountDetail::mapToHandlerUrl
+                ));
+
+        flattedMap.replaceAll((key, list) -> {
+          list.forEach(data -> data.setNonstaticField(accountDetails.get(data.getChannelId())));
+          return list;
+        });
+
+        return GetHotVideosDto.Response.builder()
+                .baseTime(now)
+                .itemMap(flattedMap)
+                .build();
+    }
+
+    private void appendDatas(Map<String, Object> queries, String mapKey, Map<String, List<VideoFlatMap>> flattedMap, Set<String> channelIds) throws Exception {
+        List<VideoFlatMap> flattedList = getHotVideosInCategory(queries);
+        channelIds.addAll(flattedList.stream().map(VideoFlatMap::getChannelId).toList());
+        flattedMap.put(mapKey, flattedList);
+    }
+
+    private List<VideoFlatMap> getHotVideosInCategory(Map<String, Object> queries) throws Exception {
+        String nextPageToken = null;
+        List<VideoFlatMap> flatted = new ArrayList<>();
+        do {
+            VideoListResponse response = googleAPIService.getObjectFromYoutubeDataAPI(
+                    HttpMethod.GET,
+                    "videos",
+                    queries,
+                    VideoListResponse.class
+            );
+            nextPageToken = response.getNextPageToken();
+            queries.put("pageToken", nextPageToken);
+            flatted.addAll(response.getItems().stream().map(VideoFlatMap::new).toList());
+        } while (nextPageToken != null);
+        return flatted;
+    }
+
+    private List<VideoCategoryFlatMap> getVideoCategoryId() throws Exception {
+        Map<String, Object> queries = new HashMap<>();
+        queries.put("part", "snippet");
+        queries.put("regionCode", "KR");
+        queries.put("hl", "ko_KR");
+
+        VideoCategoryListResponse response = googleAPIService.getObjectFromYoutubeDataAPI(
+                HttpMethod.GET,
+                "videoCategories",
+                queries,
+                VideoCategoryListResponse.class
+        );
+
+        List<VideoCategoryResource> list = response.getItems().stream().filter(item -> item.getSnippet().getAssignable()).toList();
+        return list.stream().map(VideoCategoryFlatMap::new).toList();
     }
 
     public GetCommentsDto.Response getCommentsByVideoId(String videoId, Member member) throws Exception {

@@ -2,6 +2,7 @@ package com.hanhome.youtube_comments.google.controller;
 
 import com.hanhome.youtube_comments.google.dto.DeleteCommentsDto;
 import com.hanhome.youtube_comments.google.dto.GetCommentsDto;
+import com.hanhome.youtube_comments.google.dto.GetHotVideosDto;
 import com.hanhome.youtube_comments.google.dto.GetVideosDto;
 import com.hanhome.youtube_comments.google.service.YoutubeDataService;
 import com.hanhome.youtube_comments.member.entity.Member;
@@ -25,6 +26,12 @@ public class YoutubeDataController {
     ) throws Exception {
         Member member = uuidFromContext.getMember();
         return ResponseEntity.ok(youtubeDataService.getVideosByPlaylist(requestDto, member));
+    }
+
+    @GetMapping("/hot-videos")
+    public ResponseEntity<GetHotVideosDto.Response> getHotVideos() throws Exception {
+        GetHotVideosDto.Response response = youtubeDataService.getHotVideos();
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/videos/{videoId}")
