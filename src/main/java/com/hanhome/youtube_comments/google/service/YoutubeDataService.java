@@ -76,6 +76,9 @@ public class YoutubeDataService {
     @Value("${data.youtube.access-token}")
     private String redisGoogleAtKey;
 
+    @Value("${data.youtube.hot-video}")
+    private String redisHotVideoKey;
+
     private String getGoogleAccessToken(UUID uuid) throws Exception {
         String googleAccessToken = (String) redisService.get(redisGoogleAtKey + ":" + uuid);
         return googleAccessToken == null ? googleAPIService.takeNewGoogleAccessToken(uuid) : googleAccessToken;
@@ -204,8 +207,11 @@ public class YoutubeDataService {
                 .build();
     }
 
+    public GetHotVideosDto.Response getHotVideosFromRedis() {
+        return redisService.get(redisHotVideoKey, GetHotVideosDto.Response.class);
+    }
+
     // TODO: 추후 redis로 이동하여 redis에서 받아오도록 수정
-//    @Cacheable(value = "hotVideos")
     public GetHotVideosDto.Response getHotVideos() throws Exception {
         Set<String> channelIdSet = new HashSet<>();
         Map<String, HotVideoResponseField> flattedMap = new HashMap<>();
@@ -229,7 +235,6 @@ public class YoutubeDataService {
             } catch (RequestedEntityNotFoundException ignored) {}
         }
 
-        String now = Instant.now().toString();
 
         List<String> channelIdList = new ArrayList<>(channelIdSet);
         int batchSize = 50;
@@ -253,6 +258,7 @@ public class YoutubeDataService {
             return data;
         });
 
+        String now = Instant.now().toString();
         return GetHotVideosDto.Response.builder()
                 .baseTime(now)
                 .itemMap(flattedMap)

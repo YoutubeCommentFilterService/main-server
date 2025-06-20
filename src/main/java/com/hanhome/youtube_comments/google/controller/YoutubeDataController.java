@@ -29,8 +29,8 @@ public class YoutubeDataController {
     }
 
     @GetMapping("/hot-videos")
-    public ResponseEntity<GetHotVideosDto.Response> getHotVideos() throws Exception {
-        GetHotVideosDto.Response response = youtubeDataService.getHotVideos();
+    public ResponseEntity<GetHotVideosDto.Response> getHotVideos() {
+        GetHotVideosDto.Response response = youtubeDataService.getHotVideosFromRedis();
         return ResponseEntity.ok(response);
     }
 
