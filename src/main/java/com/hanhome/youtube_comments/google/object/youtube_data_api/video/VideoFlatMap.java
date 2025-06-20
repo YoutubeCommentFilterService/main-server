@@ -16,9 +16,9 @@ public class VideoFlatMap implements Serializable {
     private final String publishedAt;
     private final String thumbnailUrl;
     private final String viewCount;
-    private final String likeCount;
-    private final String dislikeCount;
-    private final String commentCount;
+//    private final String likeCount;
+//    private final String dislikeCount;
+//    private final String commentCount;
 
     private final String channelId;
     private final String channelTitle;
@@ -36,9 +36,9 @@ public class VideoFlatMap implements Serializable {
         thumbnailUrl = snippet.getThumbnail();
 
         viewCount = convertVideoStatisticFormat(statistics.getViewCount(), "뷰");
-        likeCount = convertVideoStatisticFormat(statistics.getLikeCount(), "");
-        dislikeCount = convertVideoStatisticFormat(statistics.getDislikeCount(), "");
-        commentCount = convertVideoStatisticFormat(statistics.getCommentCount(), "개");
+//        likeCount = convertVideoStatisticFormat(statistics.getLikeCount(), "");
+//        dislikeCount = convertVideoStatisticFormat(statistics.getDislikeCount(), "");
+//        commentCount = convertVideoStatisticFormat(statistics.getCommentCount(), "개");
 
         channelTitle = snippet.getChannelTitle().replaceAll("#[가-힣a-zA-Z0-9]", "").trim();
         channelId = snippet.getChannelId();

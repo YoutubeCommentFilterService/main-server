@@ -24,6 +24,7 @@ import com.hanhome.youtube_comments.google.object.youtube_data_api.comment.Comme
 import com.hanhome.youtube_comments.google.object.youtube_data_api.comment_thread.*;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.playlist_items.PlaylistItemListResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.playlist_items.PlaylistItemSnippetResource;
+import com.hanhome.youtube_comments.google.object.youtube_data_api.video.HotVideoResponseField;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.video.VideoFlatMap;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.video.VideoListResponse;
 import com.hanhome.youtube_comments.google.object.youtube_data_api.video_category.VideoCategoryFlatMap;
@@ -207,7 +208,7 @@ public class YoutubeDataService {
 //    @Cacheable(value = "hotVideos")
     public GetHotVideosDto.Response getHotVideos() throws Exception {
         Set<String> channelIdSet = new HashSet<>();
-        Map<String, List<VideoFlatMap>> flattedMap = new HashMap<>();
+        Map<String, HotVideoResponseField> flattedMap = new HashMap<>();
         Map<String, Object> queries = new HashMap<>();
         queries.put("chart", "mostPopular");
         queries.put("part", "snippet,statistics");
@@ -247,9 +248,9 @@ public class YoutubeDataService {
                         YoutubeAccountDetail::mapToHandlerUrl
                 ));
 
-        flattedMap.replaceAll((key, list) -> {
-          list.forEach(data -> data.setNonstaticField(accountDetails.get(data.getChannelId())));
-          return list;
+        flattedMap.replaceAll((key, data) -> {
+            data.getItems().forEach(flatMap -> flatMap.setNonstaticField(accountDetails.get(flatMap.getChannelId())));
+            return data;
         });
 
         return GetHotVideosDto.Response.builder()
@@ -258,10 +259,15 @@ public class YoutubeDataService {
                 .build();
     }
 
-    private void appendDatas(Map<String, Object> queries, String mapKey, Map<String, List<VideoFlatMap>> flattedMap, Set<String> channelIds) throws Exception {
+    private void appendDatas(Map<String, Object> queries, String mapKey, Map<String, HotVideoResponseField> flattedMap, Set<String> channelIds) throws Exception {
+        String[] splittedMapKey = mapKey.split(":");
         List<VideoFlatMap> flattedList = getHotVideosInCategory(queries);
         channelIds.addAll(flattedList.stream().map(VideoFlatMap::getChannelId).toList());
-        flattedMap.put(mapKey, flattedList);
+        HotVideoResponseField responseField = HotVideoResponseField.builder()
+                        .key(Integer.parseInt(splittedMapKey[0]))
+                        .items(flattedList)
+                        .build();
+        flattedMap.put(splittedMapKey[1], responseField);
     }
 
     private List<VideoFlatMap> getHotVideosInCategory(Map<String, Object> queries) throws Exception {
