@@ -221,7 +221,7 @@ public class MemberProfileUpdateJob {
 
         public ChannelResourceFlatted(ChannelResource resource) {
             channelId = resource.getId();
-            profileImage = resource.getSnippet().getThumbnails().getDefaultThumbnail().getUrl();
+            profileImage = resource.getSnippet().getThumbnail();
             channelName = resource.getSnippet().getTitle();
             channelHandler = resource.getSnippet().getCustomUrl();
         }
