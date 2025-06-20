@@ -55,6 +55,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
 
                 .authorizeHttpRequests(request -> request
+                        .requestMatchers(HttpMethod.GET, "/api/youtube/hot-videos").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/member/refresh-token").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/metadata/predict-class").authenticated()
                         .requestMatchers("/api/youtube/**").authenticated()
