@@ -11,4 +11,5 @@ public class ChannelResource {
     private String id;
     private ChannelSnippetResource snippet;
     private ChannelContentDetailsResource contentDetails;
+    private ChannelStatisticsResource statistics;
 }
