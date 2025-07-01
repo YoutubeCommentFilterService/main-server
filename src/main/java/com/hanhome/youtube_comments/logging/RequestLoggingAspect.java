@@ -34,7 +34,8 @@ public class RequestLoggingAspect {
 
     @Pointcut(
             "execution(* com.hanhome.youtube_comments.oauth..*(..)) || " +
-            "execution(* com.hanhome.youtube_comments.redis.service..*(..))"
+            "execution(* com.hanhome.youtube_comments.redis.service..*(..)) || " +
+            "execution(* com.hanhome.youtube_comments.google.service.GeminiService..*(..))"
     )
     public void notIncludeExecution() {}
 
