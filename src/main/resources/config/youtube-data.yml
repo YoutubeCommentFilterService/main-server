@@ -9,3 +9,9 @@ data:
     scheme: ${PREDICT_SERVER_SCHEME:http}
     host: ${PREDICT_SERVER_HOST:localhost}
     port: ${PREDICT_SERVER_PORT:5000}
+
+  gemini:
+    key: ${GEMINI_KEY}
+
+  ytdlp:
+    script-path: ${YTDLP_SUB_SCRIPT_PATH}
