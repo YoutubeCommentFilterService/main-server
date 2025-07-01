@@ -23,6 +23,8 @@ public class VideoFlatMap implements Serializable {
 //    private String likeCount;
 //    private String dislikeCount;
 //    private String commentCount;
+    private String summarized;
+    private String categoryId;
 
     private String channelId;
     private String channelTitle;
@@ -38,6 +40,7 @@ public class VideoFlatMap implements Serializable {
 //        description = replaceSpacer(snippet.getLocalized().getDescription());
         publishedAt = snippet.getPublishedAt();
         thumbnailUrl = snippet.getThumbnail();
+        categoryId = snippet.getCategoryId();
 
         viewCount = convertVideoStatisticFormat(statistics.getViewCount(), "뷰");
 //        likeCount = convertVideoStatisticFormat(statistics.getLikeCount(), "");
@@ -64,6 +67,10 @@ public class VideoFlatMap implements Serializable {
         this.channelHandler = obj.getChannelHandler();
         this.channelThumbnailUrl = obj.getThumbnailUrl();
         this.subscriberCount = convertVideoStatisticFormat(obj.getSubscriberCount(), "");
+    }
+
+    public void setSummarized(String summarized) {
+        this.summarized = summarized;
     }
 
     private String convertVideoStatisticFormat(Integer statistic, String type) {

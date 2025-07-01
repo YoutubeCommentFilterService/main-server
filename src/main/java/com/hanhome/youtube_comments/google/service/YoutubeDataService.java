@@ -63,6 +63,7 @@ public class YoutubeDataService {
     private final ObjectMapper objectMapper;
     private final LoggingPredictedService loggingPredictedService;
     private final GoogleAPIService googleAPIService;
+    private final GeminiService geminiService;
 
     private final WebClient webClient = WebClient.create();
     private final static int COMMENT_THREAD_MAX_REPLY = 5;
@@ -235,6 +236,23 @@ public class YoutubeDataService {
             } catch (RequestedEntityNotFoundException ignored) {}
         }
 
+        Set<String> summarizeTargetVideos = new HashSet<>();
+        // 인급동 카테고리 중 특정 카테고리만 요약 실행
+        String[] summarizeCategories = { "뉴스/정치", "인물/블로그" };
+        for (String category : summarizeCategories) {
+            HotVideoResponseField field = flattedMap.get(category);
+            if (field != null) {
+                List<VideoFlatMap> flattedMaps = field.getItems();
+                if (flattedMaps != null && !flattedMaps.isEmpty())
+                    summarizeTargetVideos.addAll(
+                            field.getItems().stream()
+                                    .map(VideoFlatMap::getVideoId)
+                                    .toList()
+                    );
+            }
+        }
+
+        Map<String, String> geminiOutputs  = geminiService.generateSummarizationVideoCaptions(summarizeTargetVideos.stream().toList());
 
         List<String> channelIdList = new ArrayList<>(channelIdSet);
         int batchSize = 50;
@@ -253,9 +271,14 @@ public class YoutubeDataService {
                         YoutubeAccountDetail::mapToHandlerUrl
                 ));
 
-        flattedMap.replaceAll((key, data) -> {
-            data.getItems().forEach(flatMap -> flatMap.setNonstaticField(accountDetails.get(flatMap.getChannelId())));
-            return data;
+        flattedMap.forEach((key, data) ->{
+            data.getItems().forEach(flatMap -> {
+                flatMap.setNonstaticField(accountDetails.get(flatMap.getChannelId()));
+                String summarized = geminiOutputs.get(flatMap.getVideoId());
+                if (summarized != null && !summarized.isEmpty()) {
+                    flatMap.setSummarized(geminiOutputs.get(flatMap.getVideoId()));
+                }
+            });
         });
 
         String now = Instant.now().toString();
