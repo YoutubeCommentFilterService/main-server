@@ -8,9 +8,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-
 @Component
 public class YoutubeChannelInfoUpdater {
     private final JobLauncher jobLauncher;
@@ -27,9 +24,8 @@ public class YoutubeChannelInfoUpdater {
     @Scheduled(cron = "0 0 1 * * 1", zone = "Asia/Seoul")
     public void run() {
         try {
-            String dynamicJobName = "updateChannelInfo-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("mm-ss-SSS"));
-
             JobParameters jobParameters = new JobParametersBuilder()
+                    .addLong("timestamp", System.currentTimeMillis())
                     .toJobParameters();
 
             jobLauncher.run(

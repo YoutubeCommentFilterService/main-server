@@ -8,9 +8,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-
 @Component
 public class HotVideoFetcher {
     private final JobLauncher jobLauncher;
@@ -27,9 +24,8 @@ public class HotVideoFetcher {
     @Scheduled(cron = "0 0 8,20 * * *", zone = "Asia/Seoul")
     public void run() {
         try {
-            String dynamicJobName = "updateHotVideo-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("mm-ss-SSS"));
-
             JobParameters jobParameters = new JobParametersBuilder()
+                    .addLong("timestamp", System.currentTimeMillis())
                     .toJobParameters();
 
             jobLauncher.run(
