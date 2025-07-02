@@ -212,7 +212,6 @@ public class YoutubeDataService {
         return redisService.get(redisHotVideoKey, GetHotVideosDto.Response.class);
     }
 
-    // TODO: 추후 redis로 이동하여 redis에서 받아오도록 수정
     public GetHotVideosDto.Response getHotVideos() throws Exception {
         Set<String> channelIdSet = new HashSet<>();
         Map<String, HotVideoResponseField> flattedMap = new HashMap<>();
