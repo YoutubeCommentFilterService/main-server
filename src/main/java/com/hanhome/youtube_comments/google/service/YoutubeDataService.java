@@ -137,21 +137,11 @@ public class YoutubeDataService {
                 this::generateYoutubeChannelDetail
         );
     }
+    // ChannelResource channelResource
 
     private Mono<List<YoutubeAccountDetail>> generateYoutubeChannelDetail(ChannelListResponse channelListResponse) {
         return Mono.just(
-                channelListResponse.getItems().stream().map(resource -> {
-                    ChannelSnippetResource channelSnippetResource = resource.getSnippet();
-                    ChannelContentDetailsResource channelContentDetailsResource = resource.getContentDetails();
-                    return YoutubeAccountDetail.builder()
-                            .channelId(resource.getId())
-                            .playlistId(channelContentDetailsResource.getRelatedPlaylists().getUploads())
-                            .channelHandler(channelSnippetResource.getCustomUrl())
-                            .channelName(channelSnippetResource.getTitle())
-                            .thumbnailUrl(channelSnippetResource.getThumbnail())
-                            .subscriberCount(resource.getStatistics().getSubscriberCount())
-                            .build();
-                }).toList()
+                channelListResponse.getItems().stream().map(YoutubeAccountDetail::new).toList()
         );
     }
 
